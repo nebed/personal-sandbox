@@ -1,8 +1,8 @@
 locals {
   domains = {
-    nebed-io                = "nebed.io"
-    euroborosconsulting-com = "euroborosconsulting.com"
-    strataware-io           = "strataware.io"
+    nebed-io                = "nebed.io."
+    euroborosconsulting-com = "euroborosconsulting.com."
+    strataware-io           = "strataware.io."
   }
 }
 
