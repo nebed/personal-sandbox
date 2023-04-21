@@ -69,6 +69,22 @@ resource "google_compute_firewall" "http-postbox" {
   target_tags   = local.vm_config.network_tags
 }
 
+resource "google_compute_firewall" "mail-postbox" {
+  name        = "allow-mail-traffic-from-world"
+  network     = data.google_compute_network.default.self_link
+  description = "Firewall rule to allow mail traffic to instance"
+
+  direction = "INGRESS"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["25", "143", "465", "587", "993"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = local.vm_config.network_tags
+}
+
 resource "google_compute_firewall" "ssh" {
   name        = "allow-ssh-from-local-machine"
   network     = data.google_compute_network.default.self_link
