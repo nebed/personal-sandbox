@@ -14,5 +14,5 @@ terraform {
 
 provider "google" {
   project = "personal-projects-384213"
-  region  = "us-central1-a"
+  region  = "us-central1"
 }

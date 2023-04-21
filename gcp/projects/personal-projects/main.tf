@@ -42,11 +42,6 @@ resource "google_compute_instance" "mailserver" {
     }
   }
 
-  // Local SSD disk
-  scratch_disk {
-    interface = "SCSI"
-  }
-
   network_interface {
     subnetwork = data.google_compute_subnetwork.default.self_link
 
@@ -85,7 +80,7 @@ resource "google_compute_firewall" "ssh" {
     ports    = ["22"]
   }
 
-  source_ranges = [data.local_file.local_ip.content]
+  source_ranges = [trimspace(data.local_file.local_ip.content)]
   target_tags   = local.vm_config.network_tags
 }
 
@@ -96,7 +91,7 @@ resource "null_resource" "local_ip" {
 
   provisioner "local-exec" {
 
-    command = "dig +short myip.opendns.com @resolver1.opendns.com > ${local.local_ip_file}"
+    command = "echo \"$(dig +short myip.opendns.com @resolver1.opendns.com)/32\" > ${local.local_ip_file}"
   }
 }
 
