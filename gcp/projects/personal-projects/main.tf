@@ -10,7 +10,8 @@ locals {
     disk_type    = "pd-standard"
   }
 
-  local_ip_file = "${abspath(path.root)}/.terraform/ip.txt"
+  local_ip_file  = "${abspath(path.root)}/.terraform/ip.txt"
+  public_ssh_key = "${abspath(path.root)}/files/id_rsa.pub"
 
 }
 
@@ -49,6 +50,10 @@ resource "google_compute_instance" "mailserver" {
     access_config {
       nat_ip = google_compute_address.postbox.address
     }
+  }
+
+  metadata = {
+    ssh-keys = data.local_file.ssh_key.content
   }
 
 }
@@ -115,4 +120,8 @@ resource "null_resource" "local_ip" {
 data "local_file" "local_ip" {
   filename   = local.local_ip_file
   depends_on = [null_resource.local_ip]
+}
+
+data "local_file" "ssh_key" {
+  filename = local.public_ssh_key
 }
