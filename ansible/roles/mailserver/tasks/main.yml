@@ -1,0 +1,25 @@
+- name: "Updating Apt Cache"
+  become: yes
+  apt:
+    update_cache: yes
+
+- name: "Configure Timezone"
+  become: yes
+  shell: sudo dpkg-reconfigure tzdata
+
+- name: "support install postfix non-interactively"
+  become: yes
+  shell: |
+          debconf-set-selections <<< "postfix postfix/mailname string {{ main_hostname }}"
+          debconf-set-selections <<< "postfix postfix/main_mailer_type string 'Internet Site'"
+          apt-get install --assume-yes postfix
+
+- name: "Install Common Apt Packages"
+  become: yes
+  apt:
+    state: present
+    pkg:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - software-properties-common
