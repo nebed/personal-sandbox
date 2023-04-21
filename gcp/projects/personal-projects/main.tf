@@ -24,7 +24,8 @@ data "google_compute_subnetwork" "default" {
 }
 
 resource "google_compute_address" "postbox" {
-  name = "postbox-public-ip"
+  name         = "postbox-public-ip"
+  network_tier = "STANDARD"
 }
 
 resource "google_compute_instance" "mailserver" {
