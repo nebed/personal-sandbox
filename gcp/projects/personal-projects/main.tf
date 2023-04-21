@@ -85,7 +85,7 @@ resource "google_compute_firewall" "ssh" {
     ports    = ["22"]
   }
 
-  source_ranges = [data.local_ip_file.content]
+  source_ranges = [data.local_file.local_ip.content]
   target_tags   = local.vm_config.network_tags
 }
 
@@ -102,5 +102,5 @@ resource "null_resource" "local_ip" {
 
 data "local_file" "local_ip" {
   filename   = local.local_ip_file
-  depends_on = ["null_resource.local_ip"]
+  depends_on = [null_resource.local_ip]
 }
