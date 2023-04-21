@@ -32,7 +32,7 @@ resource "google_compute_instance" "mailserver" {
   machine_type = local.vm_config.size
   zone         = local.vm_config.zone
 
-  tags = local.vm_config.tags
+  tags = local.vm_config.network_tags
 
   boot_disk {
     initialize_params {
