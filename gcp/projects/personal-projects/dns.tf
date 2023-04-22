@@ -17,6 +17,8 @@ locals {
       mx = {
         "" = "0 mail.nebed.io."
       }
+      smtp_user_secret     = "mailgun-mail-nebed-io-user"
+      smpt_password_secret = "mailgun-mail-nebed-io-password"
     }
 
     euroborosconsulting-com = {
@@ -35,6 +37,8 @@ locals {
       mx = {
         "" = "0 mail.euroborosconsulting.com."
       }
+      smtp_user_secret     = "mailgun-mail-euroborosconsulting-com-smtp-user"
+      smpt_password_secret = "mailgun-mail-euroborosconsulting-com-smtp-password"
     }
 
     strataware-io = {
@@ -43,7 +47,7 @@ locals {
         "email.mail." = "mailgun.org."
       }
       a = {
-
+        "mail." = google_compute_address.postbox.address
       }
       txt = {
 
@@ -51,6 +55,8 @@ locals {
       mx = {
 
       }
+      smtp_user_secret     = null
+      smpt_password_secret = null
     }
   }
 

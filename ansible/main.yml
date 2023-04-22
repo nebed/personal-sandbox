@@ -1,8 +1,0 @@
----
-- hosts: all
-  become: true
-  roles:
-    - role: mailserver
-      vars:
-        main_hostname: "mail.nebed.io"
-        docker_compose_version: "v2.4.1"

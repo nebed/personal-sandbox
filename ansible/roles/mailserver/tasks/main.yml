@@ -5,21 +5,58 @@
 
 - name: "Configure Timezone"
   become: yes
-  shell: sudo dpkg-reconfigure tzdata
+  shell: |
+          echo "Europe/Tallinn" > /etc/timezone && \
+          dpkg-reconfigure -f noninteractive tzdata 
 
 - name: "support install postfix non-interactively"
   become: yes
   shell: |
-          debconf-set-selections <<< "postfix postfix/mailname string {{ main_hostname }}"
-          debconf-set-selections <<< "postfix postfix/main_mailer_type string 'Internet Site'"
-          apt-get install --assume-yes postfix
+          echo "postfix postfix/mailname string {{ main_hostname }}" | debconf-set-selections
+          echo "postfix postfix/main_mailer_type string 'Internet Site'" | debconf-set-selections
+          apt-get -y install postfix
 
-- name: "Install Common Apt Packages"
+- name: Replace hostname in postfix config
   become: yes
-  apt:
-    state: present
-    pkg:
-      - apt-transport-https
-      - ca-certificates
-      - curl
-      - software-properties-common
+  lineinfile:
+    path: /etc/postfix/main.cf
+    regexp: '^myhostname'
+    line: myhostname = {{ main_hostname }}
+
+- name: Update or Create sasl password file
+  become: yes
+  file:
+    path: /etc/postfix/sasl_passwd
+    state: touch
+    mode: '0644'
+
+# - name: Update or Create sasl password file
+#   become: yes
+#   lineinfile:
+#     path: /etc/postfix/main.cf
+#     create: yes
+#     line: myhostname = {{ main_hostname }}
+#     block: |
+#       {{ item.ip }} {{ item.name }}
+#   loop:
+#     - { name: host1, ip: 10.10.1.10 }
+#     - { name: host2, ip: 10.10.1.11 }
+#     - { name: host3, ip: 10.10.1.12 }
+
+
+- name: Replace relayhost in postfix config
+  become: yes
+  lineinfile:
+    path: /etc/postfix/main.cf
+    regexp: '^relayhost'
+    line: relayhost = [smtp.mailgun.org]:587
+
+- name: Insert/Update lines in postfix config
+  become: yes
+  blockinfile:
+    path: /etc/postfix/main.cf
+    block: |
+      smtp_sasl_auth_enable = yes
+      smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+      smtp_sasl_security_options = noanonymous
+      smtp_sender_dependent_authentication = yes
