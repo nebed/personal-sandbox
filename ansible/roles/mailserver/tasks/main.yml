@@ -61,13 +61,8 @@
   file:
     path: /etc/postfix/sasl_passwd.db
     mode: '0600'
-
-- name: Restart Postfix Service
-  become: yes
-  systemd:
-    name: postfix
-    state: restarted
-    enabled: yes
+  notify:
+    - Restart Postfix Service
 
 - name: Updating Apt Cache
   become: yes
@@ -80,6 +75,9 @@
     state: present
     pkg:
       - certbot
+      - dovecot-core 
+      - dovecot-imapd 
+      - dovecot-lmtpd
 
 - name: Generate Certificates for domains
   become: yes
@@ -101,7 +99,191 @@
   with_items: 
     - "{{ domainlist }}"
 
+- name: Replace relayhost in postfix config
+  become: yes
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-ssl.conf
+    regexp: '^{{ item.old }}'
+    line: {{ item.new }}
+  loop:
+    - { old: ssl_cert = </etc/dovecot/private/dovecot.pem, new: ssl_cert = </etc/letsencrypt/live/{{ main_hostname }}/fullchain.pem }
+    - { old: ssl_key = </etc/dovecot/private/dovecot.key, new: ssl_cert = </etc/letsencrypt/live/{{ main_hostname }}/privkey.pem  }
+
+- name: Update SSL config Dovecot
+  become: yes
+  blockinfile:
+    create: yes
+    path: /etc/dovecot/conf.d/10-ssl.conf
+    block: |
+      local_name {{ item.mail_domain }} {
+        ssl_cert =</etc/letsencrypt/live/{{ item.mail_domain }}/fullchain.pem
+        ssl_key =</etc/letsencrypt/live/{{ item.mail_domain }}/privkey.pem
+      }
+    marker: "# {mark} ANSIBLE MANAGED BLOCK {{ item.mail_domain }}"
+  with_items: 
+    - "{{ domainlist }}"
+
 - name: Hash Postfix SSL map
   become: yes
-  shell: sudo postmap -F hash:/etc/postfix/ssl_map
+  shell: sudo postmap -F hash:/etc/postfix/ssl_map      
 
+- name: Insert SSL map postfix config
+  become: yes
+  blockinfile:
+    path: /etc/postfix/main.cf
+    block: |
+      tls_server_sni_maps = hash:/etc/postfix/ssl_map
+      smtpd_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+      smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+      smtp_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+      smtp_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+      mailbox_transport = lmtp:unix:private/dovecot-lmtp
+      smtputf8_enable = no
+  notify:
+    - Restart Postfix Service
+
+- name: Enable port 587 and 465 postfix
+  become: yes
+  blockinfile:
+    marker: "{mark}"
+    marker_begin: "#tlsproxy  unix  -       -       y       -       0       tlsproxy"
+    marker_end: "#628       inet  n       -       y       -       -       qmqpd"
+    path: /etc/postfix/master.cf
+    block: |
+      submission inet n       -       y       -       -       smtpd
+       -o syslog_name=postfix/submission
+       -o smtpd_tls_security_level=encrypt
+       -o smtpd_sasl_auth_enable=yes
+       -o smtpd_tls_auth_only=yes
+       -o smtpd_reject_unlisted_recipient=no
+       -o smtpd_client_restrictions=$mua_client_restrictions
+       -o smtpd_helo_restrictions=$mua_helo_restrictions
+       -o smtpd_sender_restrictions=$mua_sender_restrictions
+       -o smtpd_recipient_restrictions=
+       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
+       -o smtpd_sasl_type=dovecot
+       -o smtpd_sasl_path=private/auth
+       -o milter_macro_daemon_name=ORIGINATING
+      smtps     inet  n       -       y       -       -       smtpd
+       -o syslog_name=postfix/smtps
+       -o smtpd_tls_wrappermode=yes
+       -o smtpd_sasl_auth_enable=yes
+       -o smtpd_reject_unlisted_recipient=no
+       -o smtpd_client_restrictions=$mua_client_restrictions
+       -o smtpd_helo_restrictions=$mua_helo_restrictions
+       -o smtpd_sender_restrictions=$mua_sender_restrictions
+       -o smtpd_recipient_restrictions=
+       -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
+       -o smtpd_sasl_type=dovecot
+       -o smtpd_sasl_path=private/auth
+       -o milter_macro_daemon_name=ORIGINATING
+
+- name: Update Certbot config for autorenew Certificate
+  become: yes
+  blockinfile:
+    create: yes
+    path: /etc/letsencrypt/renewal-hooks/deploy/mail-permissions
+    block: |
+      #!/bin/sh
+      setfacl -R -m u:www-data:rx /etc/letsencrypt/live/ /etc/letsencrypt/archive/
+      postmap -F hash:/etc/postfix/ssl_map
+      service dovecot restart
+      service postfix restart
+
+- name: Updating Apt Cache
+  become: yes
+  apt:
+    update_cache: yes
+
+
+- name: Replace mail_location in dovecot
+  become: yes
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-mail.conf
+    regexp: '^mail_location'
+    line: mail_location = maildir:~/Maildir
+
+
+- name: Replace lmtp in dovecot
+  become: yes
+  blockinfile:
+    marker: "{mark}"
+    marker_begin: "service lmtp {"
+    marker_end: "# Create inet listener only if you can't use the above UNIX socket"
+    path: /etc/dovecot/conf.d/10-master.conf
+    block: |
+      unix_listener /var/spool/postfix/private/dovecot-lmtp {
+        mode = 0600
+        user = postfix
+        group = postfix
+      }
+
+- name: Disable plaintext auth in dovecot
+  become: yes
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-auth.conf
+    regexp: '^disable_plaintext_auth'
+    line: disable_plaintext_auth = yes
+
+- name: set SSL min protocol in dovecot
+  become: yes
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-auth.conf
+    regexp: '^ssl_min_protocol'
+    line: ssl_min_protocol = TLSv1.2
+
+- name: ssl_prefer_server_ciphers in dovecot
+  become: yes
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-auth.conf
+    regexp: '^ssl_prefer_server_ciphers'
+    line: ssl_prefer_server_ciphers = yes
+
+- name: Condigrue SASL authentication
+  become: yes
+  blockinfile:
+    marker: "{mark}"
+    marker_begin: "# Postfix smtp-auth"
+    marker_end: "# Auth process is run as this user."
+    path: /etc/dovecot/conf.d/10-master.conf
+    block: |
+      unix_listener /var/spool/postfix/private/auth {
+       mode = 0666
+      }
+
+- name: Condigrue mail Folders
+  become: yes
+  blockinfile:
+    marker: "{mark}"
+    marker_begin: "# These mailboxes are widely used and could perhaps be created automatically:"
+    marker_end: "# If you have a virtual \"All messages\" mailbox:"
+    path: /etc/dovecot/conf.d/15-mailboxes.conf
+    block: |
+        mailbox Drafts {
+          auto = create
+          special_use = \Drafts
+        }
+        mailbox Junk {
+          auto = create
+          special_use = \Junk
+        }
+        mailbox Trash {
+          auto = create
+          special_use = \Trash
+        }
+
+        # For \Sent mailboxes there are two widely used names. We'll mark both of
+        # them as \Sent. User typically deletes one of them if duplicates are created.
+        mailbox Sent {
+          auto = create
+          special_use = \Sent
+        }
+
+- name: Restart Dovecot Service
+  become: yes
+  systemd:
+    name: dovecot
+    state: restarted
+    enabled: yes
+  notify:
+    - Restart Postfix Service

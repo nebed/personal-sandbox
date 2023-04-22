@@ -2,6 +2,7 @@ locals {
   extra_vars = {
     download_cache_dir = "${abspath(path.root)}/.terraform"
     ansible_user       = "uchenebed"
+    main_hostname      = "mail.nebed.io"
     domainlist         = local.domainlist #{ for item, value in local.smtp_creds : item => value }
 
   }
