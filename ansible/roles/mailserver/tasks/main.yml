@@ -1,4 +1,4 @@
-- name: "Updating Apt Cache"
+- name: Updating Apt Cache
   become: yes
   apt:
     update_cache: yes
@@ -25,23 +25,12 @@
 
 - name: Update or Create sasl password file
   become: yes
-  file:
+  lineinfile:
     path: /etc/postfix/sasl_passwd
-    state: touch
-    mode: '0644'
-
-# - name: Update or Create sasl password file
-#   become: yes
-#   lineinfile:
-#     path: /etc/postfix/main.cf
-#     create: yes
-#     line: myhostname = {{ main_hostname }}
-#     block: |
-#       {{ item.ip }} {{ item.name }}
-#   loop:
-#     - { name: host1, ip: 10.10.1.10 }
-#     - { name: host2, ip: 10.10.1.11 }
-#     - { name: host3, ip: 10.10.1.12 }
+    create: yes
+    line: "{{ item.name }}  {{ item.smtp_cred }}"
+  with_items: 
+    - "{{ domainlist }}"
 
 
 - name: Replace relayhost in postfix config
@@ -60,3 +49,59 @@
       smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
       smtp_sasl_security_options = noanonymous
       smtp_sender_dependent_authentication = yes
+
+- name: Create Postfix Hash map
+  become: yes
+  shell: |
+          postmap /etc/postfix/sasl_passwd
+          rm /etc/postfix/sasl_passwd
+
+- name: Set Postfix db permissions
+  become: yes
+  file:
+    path: /etc/postfix/sasl_passwd.db
+    mode: '0600'
+
+- name: Restart Postfix Service
+  become: yes
+  systemd:
+    name: postfix
+    state: restarted
+    enabled: yes
+
+- name: Updating Apt Cache
+  become: yes
+  apt:
+    update_cache: yes
+
+- name: Install certbot
+  become: yes
+  apt:
+    state: present
+    pkg:
+      - certbot
+
+- name: Generate Certificates for domains
+  become: yes
+  shell: |
+          certbot certonly  --standalone -d {{ item.mail_domain }}  --non-interactive --agree-tos -m {{ item.webmaster }}
+  with_items: 
+    - "{{ domainlist }}"
+
+- name: Create Postfix SSL Map
+  become: yes
+  blockinfile:
+    create: yes
+    path: /etc/postfix/ssl_map
+    block: |
+      {{ item.mail_domain }}
+          /etc/letsencrypt/live/{{ item.mail_domain }}/privkey.pem
+          /etc/letsencrypt/live/{{ item.mail_domain }}/fullchain.pem
+    marker: "# {mark} ANSIBLE MANAGED BLOCK {{ item.mail_domain }}"
+  with_items: 
+    - "{{ domainlist }}"
+
+- name: Hash Postfix SSL map
+  become: yes
+  shell: sudo postmap -F hash:/etc/postfix/ssl_map
+

@@ -2,14 +2,18 @@ locals {
   extra_vars = {
     download_cache_dir = "${abspath(path.root)}/.terraform"
     ansible_user       = "uchenebed"
-    smtp_creds = toset([
-      for item in local.domains : {
-        name      = item.name
-        smtp_cred = "${data.google_secret_manager_secret.smtp_user["${item}"].value}:${data.google_secret_manager_secret.smtp_pass["${item}"].value}"
-      }
-    ])
+    domainlist         = local.domainlist #{ for item, value in local.smtp_creds : item => value }
 
   }
+  domainlist = [
+    for item, value in local.domains : {
+      name        = "@${trim(value.name, ".")}"
+      smtp_cred   = "${data.google_secret_manager_secret_version.smtp_user["${item}"].secret_data}:${data.google_secret_manager_secret_version.smtp_pass["${item}"].secret_data}"
+      mail_domain = "mail.${trim(value.name, ".")}"
+      webmaster   = "webmaster@${trim(value.name, ".")}"
+    }
+    if value.smtp_user_secret != null
+  ]
 
   extra_vars_file = "${abspath(path.root)}/.terraform/ansible-%s.json"
   playbook_path   = "../../../ansible/${var.playbook}"
@@ -50,16 +54,12 @@ resource "null_resource" "ansible" {
 }
 
 
-data "google_secret_manager_secret" "smtp_user" {
-  for_each  = local.domains
-  secret_id = each.value.smtp_user_secret
+data "google_secret_manager_secret_version" "smtp_user" {
+  for_each = { for item, value in local.domains : item => value if value.smtp_user_secret != null }
+  secret   = each.value.smtp_user_secret
 }
 
-data "google_secret_manager_secret" "smtp_pass" {
-  for_each  = local.domains
-  secret_id = each.value.smtp_password_secret
-}
-
-output "secret" {
-  value = local.extra_vars.smtp_creds
+data "google_secret_manager_secret_version" "smtp_pass" {
+  for_each = { for item, value in local.domains : item => value if value.smtp_password_secret != null }
+  secret   = each.value.smtp_password_secret
 }

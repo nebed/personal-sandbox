@@ -18,13 +18,13 @@ locals {
         "" = "0 mail.nebed.io."
       }
       smtp_user_secret     = "mailgun-mail-nebed-io-user"
-      smpt_password_secret = "mailgun-mail-nebed-io-password"
+      smtp_password_secret = "mailgun-mail-nebed-io-password"
     }
 
     euroborosconsulting-com = {
       name = "euroborosconsulting.com."
       cname = {
-
+        "email.mail." = "mailgun.org."
       }
       a = {
         "mail." = google_compute_address.postbox.address
@@ -38,7 +38,7 @@ locals {
         "" = "0 mail.euroborosconsulting.com."
       }
       smtp_user_secret     = "mailgun-mail-euroborosconsulting-com-smtp-user"
-      smpt_password_secret = "mailgun-mail-euroborosconsulting-com-smtp-password"
+      smtp_password_secret = "mailgun-mail-euroborosconsulting-com-smtp-password"
     }
 
     strataware-io = {
@@ -56,7 +56,7 @@ locals {
 
       }
       smtp_user_secret     = null
-      smpt_password_secret = null
+      smtp_password_secret = null
     }
   }
 
