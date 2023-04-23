@@ -641,25 +641,15 @@
      chmod u=rwx,go= /etc/dovecot/sieve/learn-spam.sh
      chmod u=rwx,go= /etc/dovecot/sieve/learn-ham.sh
 
-- name: Update sieve config in dovecot
-  lineinfile:
-    path: /etc/dovecot/conf.d/90-sieve.conf
-    regexp: 'ˆ#sieve_after'
-    line: sieve_after = /etc/dovecot/sieve/move-spam-to-junk.sieve
-
-- name: Update sieve plugins config in dovecot
-  lineinfile:
-    path: /etc/dovecot/conf.d/90-sieve.conf
-    regexp: 'ˆ#sieve_plugins'
-    line: sieve_plugins = sieve_imapsieve sieve_extprograms
-
 - name: Add plugin sieve config to dovecot
   become: yes
   blockinfile:
     path: /etc/dovecot/conf.d/90-sieve.conf
-    insertafter: 'ˆplugin {'
+    insertafter: 'ˆplugin'
     block: |
       # Move to Junk folder
+      sieve_after = /etc/dovecot/sieve/move-spam-to-junk.sieve
+      sieve_plugins = sieve_imapsieve sieve_extprograms
       imapsieve_mailbox1_name = Junk
       imapsieve_mailbox1_causes = COPY FLAG
       imapsieve_mailbox1_before = file:/etc/dovecot/sieve/report-spam.sieve
@@ -698,11 +688,10 @@
     - Restart Postfix Service
     - Restart Dovecot Service
 
+- meta: flush_handlers
+
 - name: Compile sieve config
   become: yes
   shell: |
     sievec /etc/dovecot/sieve/move-spam-to-junk.sieve && sievec /etc/dovecot/sieve/report-spam.sieve && sievec /etc/dovecot/sieve/report-ham.sieve
-  notify:
-    - Restart Postfix Service
-    - Restart Dovecot Service
 
