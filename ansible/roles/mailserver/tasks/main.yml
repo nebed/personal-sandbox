@@ -129,7 +129,7 @@
     line: "{{ item.new }}"
   loop:
     - { old: ssl_cert = </etc/dovecot/private/dovecot.pem, new: "ssl_cert = </etc/letsencrypt/live/{{ main_hostname }}/fullchain.pem" }
-    - { old: ssl_key = </etc/dovecot/private/dovecot.key, new: "ssl_cert = </etc/letsencrypt/live/{{ main_hostname }}/privkey.pem"  }
+    - { old: ssl_key = </etc/dovecot/private/dovecot.key, new: "ssl_key = </etc/letsencrypt/live/{{ main_hostname }}/privkey.pem"  }
 
 - name: Update SSL config Dovecot
   become: yes
@@ -448,7 +448,7 @@
     create: yes
     block: |
       user = postfix
-      password = {{ mariadb_postfix_password }}
+      password = '{{ mariadb_postfix_password }}'
       hosts = localhost
       dbname = postfix
       query = SELECT domain FROM domain WHERE domain='%s' AND active = '1'
@@ -460,7 +460,7 @@
     create: yes
     block: |
       user = postfix
-      password = {{ mariadb_postfix_password }}
+      password = '{{ mariadb_postfix_password }}'
       hosts = localhost
       dbname = postfix
       query = SELECT maildir FROM mailbox WHERE username='%s' AND active = '1'
@@ -472,7 +472,7 @@
     create: yes
     block: |
       user = postfix
-      password = {{ mariadb_postfix_password }}
+      password = '{{ mariadb_postfix_password }}'
       hosts = localhost
       dbname = postfix
       query = SELECT maildir FROM mailbox,alias_domain WHERE alias_domain.alias_domain = '%d' and mailbox.username = CONCAT('%u', '@', alias_domain.target_domain) AND mailbox.active = 1 AND alias_domain.active='1'
@@ -484,7 +484,7 @@
     create: yes
     block: |
       user = postfix
-      password = {{ mariadb_postfix_password }}
+      password = '{{ mariadb_postfix_password }}'
       hosts = localhost
       dbname = postfix
       query = SELECT goto FROM alias WHERE address='%s' AND active = '1'
@@ -496,7 +496,7 @@
     create: yes
     block: |
       user = postfix
-      password = {{ mariadb_postfix_password }}
+      password = '{{ mariadb_postfix_password }}'
       hosts = localhost
       dbname = postfix
       query = SELECT goto FROM alias,alias_domain WHERE alias_domain.alias_domain = '%d' and alias.address = CONCAT('%u', '@', alias_domain.target_domain) AND alias.active = 1 AND alias_domain.active='1'
@@ -508,7 +508,7 @@
     create: yes
     block: |
       user = postfix
-      password = {{ mariadb_postfix_password }}
+      password = '{{ mariadb_postfix_password }}'
       hosts = localhost
       dbname = postfix
       query = SELECT goto FROM alias,alias_domain WHERE alias_domain.alias_domain = '%d' and alias.address = CONCAT('@', alias_domain.target_domain) AND alias.active = 1 AND alias_domain.active='1'
@@ -519,7 +519,7 @@
     path: /etc/dovecot/dovecot-sql.conf.ext
     block: |
       driver = mysql
-      connect = host=localhost dbname=postfix user=postfix password={{ mariadb_postfix_password }}
+      connect = host=localhost dbname=postfix user=postfix password='{{ mariadb_postfix_password }}'
       default_pass_scheme = SHA512
       password_query = SELECT username AS user,password FROM mailbox WHERE username = '%u' AND active='1'
       user_query = SELECT maildir, 2000 AS uid, 2000 AS gid FROM mailbox WHERE username = '%u' AND active='1'
