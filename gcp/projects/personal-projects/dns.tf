@@ -50,15 +50,20 @@ locals {
         "mail." = google_compute_address.postbox.address
       }
       txt = {
-
+        "smtp._domainkey.mail." = "\"k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDK+A4KgHeoIaG72mkjCYEpbAbnuekyuyCzBn3/09V07ye9mr1W9jhjOeRseJS4INt62UVL3ds0xbxb2/6jZL84uysruv4Y4TaY0bOAverxeCB38qTK0cgn133Si0LmyJ8tDqUaJ5AluAE4/x/FpmE8W8tqeqkjtl58g4Ae30zQNwIDAQAB\""
+        "mail."                 = "\"v=spf1 include:mailgun.org ~all\""
       }
       mx = {
-
+        "" = "0 mail.strataware.io."
       }
-      smtp_user_secret     = null
-      smtp_password_secret = null
+      smtp_user_secret     = "mailgun-mail-strataware-io-smtp-user"
+      smtp_password_secret = "mailgun-mail-strataware-io-smtp-password"
     }
   }
+
+  mariadb_root_password_secret       = "postbox-mariadb-root-password"
+  mariadb_postfix_password_secret    = "postbox-mariadb-postfix-password"
+  postfixadmin_setup_password_secret = "postfixadmin-setup-password"
 
   cname_records = flatten([
     for dns, content in local.domains : [

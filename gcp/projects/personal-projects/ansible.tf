@@ -1,11 +1,15 @@
 locals {
   extra_vars = {
-    download_cache_dir = "${abspath(path.root)}/.terraform"
-    ansible_user       = "uchenebed"
-    main_hostname      = "mail.nebed.io"
-    domainlist         = local.domainlist #{ for item, value in local.smtp_creds : item => value }
-
+    download_cache_dir          = "${abspath(path.root)}/.terraform"
+    ansible_user                = "uchenebed"
+    main_hostname               = "mail.nebed.io"
+    mariadb_root_password       = data.google_secret_manager_secret_version.mariadb_root_password.secret_data
+    mariadb_postfix_password    = data.google_secret_manager_secret_version.mariadb_postfix_password.secret_data
+    postfixadmin_setup_password = data.google_secret_manager_secret_version.postfixadmin_setup_password.secret_data
+    domainlist                  = local.domainlist
+    postfixadmin_version        = "3.3.13"
   }
+
   domainlist = [
     for item, value in local.domains : {
       name        = "@${trim(value.name, ".")}"
@@ -63,4 +67,16 @@ data "google_secret_manager_secret_version" "smtp_user" {
 data "google_secret_manager_secret_version" "smtp_pass" {
   for_each = { for item, value in local.domains : item => value if value.smtp_password_secret != null }
   secret   = each.value.smtp_password_secret
+}
+
+data "google_secret_manager_secret_version" "mariadb_root_password" {
+  secret = local.mariadb_root_password_secret
+}
+
+data "google_secret_manager_secret_version" "mariadb_postfix_password" {
+  secret = local.mariadb_postfix_password_secret
+}
+
+data "google_secret_manager_secret_version" "postfixadmin_setup_password" {
+  secret = local.postfixadmin_setup_password_secret
 }

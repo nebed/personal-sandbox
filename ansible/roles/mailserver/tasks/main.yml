@@ -74,10 +74,32 @@
   apt:
     state: present
     pkg:
+      - acl
       - certbot
       - dovecot-core 
       - dovecot-imapd 
       - dovecot-lmtpd
+      - dovecot-mysql
+      - mariadb-server
+      - nginx 
+      - php-imap 
+      - php-mbstring
+      - php-fpm
+      - php-mysql
+      - php-intl
+      - php-xml 
+      - postfix-mysql
+      - python3-certbot-nginx
+      - redis-server 
+      - rspamd
+      - wget
+
+- name: Stop Nginx Service
+  become: yes
+  systemd:
+    name: nginx
+    state: stopped
+    enabled: yes
 
 - name: Generate Certificates for domains
   become: yes
@@ -103,11 +125,11 @@
   become: yes
   lineinfile:
     path: /etc/dovecot/conf.d/10-ssl.conf
-    regexp: '^{{ item.old }}'
-    line: {{ item.new }}
+    regexp: "^{{ item.old }}"
+    line: "{{ item.new }}"
   loop:
-    - { old: ssl_cert = </etc/dovecot/private/dovecot.pem, new: ssl_cert = </etc/letsencrypt/live/{{ main_hostname }}/fullchain.pem }
-    - { old: ssl_key = </etc/dovecot/private/dovecot.key, new: ssl_cert = </etc/letsencrypt/live/{{ main_hostname }}/privkey.pem  }
+    - { old: ssl_cert = </etc/dovecot/private/dovecot.pem, new: "ssl_cert = </etc/letsencrypt/live/{{ main_hostname }}/fullchain.pem" }
+    - { old: ssl_key = </etc/dovecot/private/dovecot.key, new: "ssl_cert = </etc/letsencrypt/live/{{ main_hostname }}/privkey.pem"  }
 
 - name: Update SSL config Dovecot
   become: yes
@@ -116,8 +138,8 @@
     path: /etc/dovecot/conf.d/10-ssl.conf
     block: |
       local_name {{ item.mail_domain }} {
-        ssl_cert =</etc/letsencrypt/live/{{ item.mail_domain }}/fullchain.pem
-        ssl_key =</etc/letsencrypt/live/{{ item.mail_domain }}/privkey.pem
+        ssl_cert = </etc/letsencrypt/live/{{ item.mail_domain }}/fullchain.pem
+        ssl_key = </etc/letsencrypt/live/{{ item.mail_domain }}/privkey.pem
       }
     marker: "# {mark} ANSIBLE MANAGED BLOCK {{ item.mail_domain }}"
   with_items: 
@@ -132,15 +154,13 @@
   blockinfile:
     path: /etc/postfix/main.cf
     block: |
+      mailbox_transport = lmtp:unix:private/dovecot-lmtp
       tls_server_sni_maps = hash:/etc/postfix/ssl_map
       smtpd_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
       smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
       smtp_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
       smtp_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
-      mailbox_transport = lmtp:unix:private/dovecot-lmtp
       smtputf8_enable = no
-  notify:
-    - Restart Postfix Service
 
 - name: Enable port 587 and 465 postfix
   become: yes
@@ -183,6 +203,7 @@
   blockinfile:
     create: yes
     path: /etc/letsencrypt/renewal-hooks/deploy/mail-permissions
+    mode: 0755
     block: |
       #!/bin/sh
       setfacl -R -m u:www-data:rx /etc/letsencrypt/live/ /etc/letsencrypt/archive/
@@ -190,10 +211,17 @@
       service dovecot restart
       service postfix restart
 
-- name: Updating Apt Cache
+- name: "Send Dovecot master conf"
   become: yes
-  apt:
-    update_cache: yes
+  copy:
+    src: files/dovecot/10-master.conf
+    dest: /etc/dovecot/conf.d/10-master.conf
+
+- name: "Send Dovecot mailboxes conf"
+  become: yes
+  copy:
+    src: files/dovecot/15-mailboxes.conf
+    dest: /etc/dovecot/conf.d/15-mailboxes.conf
 
 
 - name: Replace mail_location in dovecot
@@ -203,87 +231,326 @@
     regexp: '^mail_location'
     line: mail_location = maildir:~/Maildir
 
-
-- name: Replace lmtp in dovecot
+- name: Add mail_home in dovecot
   become: yes
-  blockinfile:
-    marker: "{mark}"
-    marker_begin: "service lmtp {"
-    marker_end: "# Create inet listener only if you can't use the above UNIX socket"
-    path: /etc/dovecot/conf.d/10-master.conf
-    block: |
-      unix_listener /var/spool/postfix/private/dovecot-lmtp {
-        mode = 0600
-        user = postfix
-        group = postfix
-      }
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-mail.conf
+    line: mail_home = /var/vmail/%d/%n
 
 - name: Disable plaintext auth in dovecot
   become: yes
   lineinfile:
     path: /etc/dovecot/conf.d/10-auth.conf
-    regexp: '^disable_plaintext_auth'
+    regexp: '^#disable_plaintext_auth'
     line: disable_plaintext_auth = yes
+
+- name: Disable system auth in dovecot
+  become: yes
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-auth.conf
+    regexp: '^!include auth-system.conf.ext'
+    line: "#!include auth-system.conf.ext"
+
+- name: Enable sql auth in dovecot
+  become: yes
+  lineinfile:
+    path: /etc/dovecot/conf.d/10-auth.conf
+    regexp: '^#!include auth-sql.conf.ext'
+    line: "!include auth-sql.conf.ext"
 
 - name: set SSL min protocol in dovecot
   become: yes
   lineinfile:
     path: /etc/dovecot/conf.d/10-auth.conf
-    regexp: '^ssl_min_protocol'
+    regexp: '^#ssl_min_protocol'
     line: ssl_min_protocol = TLSv1.2
 
 - name: ssl_prefer_server_ciphers in dovecot
   become: yes
   lineinfile:
     path: /etc/dovecot/conf.d/10-auth.conf
-    regexp: '^ssl_prefer_server_ciphers'
+    regexp: '^#ssl_prefer_server_ciphers'
     line: ssl_prefer_server_ciphers = yes
 
-- name: Condigrue SASL authentication
+- name: Configure MariaDB database
+  become: yes
+  run_once: true
+  shell: |
+    #!/bin/bash
+    mysql --user root <<EOF
+    UPDATE mysql.global_priv SET priv=json_set(priv, '$.plugin', 'mysql_native_password', '$.authentication_string', PASSWORD('{{ mariadb_root_password }}')) WHERE User='root';
+    DELETE FROM mysql.global_priv WHERE User='';
+    DELETE FROM mysql.global_priv WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+    DROP DATABASE IF EXISTS test;
+    DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
+    CREATE DATABASE IF NOT EXISTS postfix;
+    CREATE OR REPLACE USER postfix@localhost IDENTIFIED BY '{{ mariadb_postfix_password }}';
+    GRANT ALL PRIVILEGES ON postfix.* TO postfix@localhost;
+    FLUSH PRIVILEGES;
+    EOF
+
+- name: Remove postfixadmin directory
+  become: yes
+  file:
+    path: /opt/postfixadmin
+    state: absent
+
+- name: Download Postfix Admin
+  unarchive:
+    src: https://github.com/postfixadmin/postfixadmin/archive/postfixadmin-{{ postfixadmin_version }}.tar.gz
+    dest: /opt
+    remote_src: yes
+
+- name: Change postfix directory name
+  become: yes
+  shell: mv /opt/postfixadmin-postfixadmin-{{ postfixadmin_version }} /opt/postfixadmin
+
+- name: Create a postfixadmin symlink in html 
+  become: yes
+  file:
+    src: /opt/postfixadmin/public
+    dest: /var/www/html/postfixadmin
+    state: link
+
+- name: Create postfixadmin setup hash
+  command: php -r 'echo password_hash("{{ postfixadmin_setup_password }}", PASSWORD_DEFAULT);'
+  register: php_hash_output
+
+- name: Set variable with hash
+  set_fact:
+    postfixadmin_setup_hash: "{{ php_hash_output.stdout }}"
+
+- name: Create Postfixadmin Config
   become: yes
   blockinfile:
-    marker: "{mark}"
-    marker_begin: "# Postfix smtp-auth"
-    marker_end: "# Auth process is run as this user."
-    path: /etc/dovecot/conf.d/10-master.conf
+    path: /opt/postfixadmin/config.local.php
+    create: yes
+    marker: "<!-- {mark} ANSIBLE MANAGED BLOCK -->"
     block: |
-      unix_listener /var/spool/postfix/private/auth {
-       mode = 0666
+      <?php
+        $CONF['database_type'] = 'mysqli';
+        $CONF['database_host'] = 'localhost';
+        $CONF['database_user'] = 'postfix';
+        $CONF['database_password'] = '{{ mariadb_postfix_password }}';
+        $CONF['database_name'] = 'postfix';
+        $CONF['encrypt'] = 'dovecot:SHA512';
+        $CONF['configured'] = true;
+        $CONF['setup_password'] = '{{ postfixadmin_setup_hash }}';
+      ?>
+
+- name: Create a postfixadmin directory
+  become: yes
+  file:
+    path: /opt/postfixadmin/templates_c
+    state: directory
+    owner: www-data
+    group: www-data
+
+- name: Add user to dovecot group
+  user:
+    name: www-data
+    groups: dovecot
+    append: yes
+
+- name: Update nginx default site
+  become: yes
+  blockinfile:
+    path: /etc/nginx/sites-available/default
+    block: |
+      #
+      server {
+              listen 80;
+              listen [::]:80;
+              server_name _;
+
+              # SSL configuration
+              #
+              listen 443 ssl default_server;
+              listen [::]:443 ssl default_server;
+              ssl_certificate /etc/letsencrypt/live/{{ main_hostname }}/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/{{ main_hostname }}/privkey.pem;
+              #
+              # Note: You should disable gzip for SSL traffic.
+              # See: https://bugs.debian.org/773332
+              #
+              # Read up on ssl_ciphers to ensure a secure configuration.
+              # See: https://bugs.debian.org/765782
+              #
+              # Self signed certs generated by the ssl-cert package
+              # Don't use them in a production server!
+              #
+              # include snippets/snakeoil.conf;
+
+              root /var/www/html;
+
+              # Add index.php to the list if you are using PHP
+              index index.html index.htm index.nginx-debian.html index.php;
+
+              server_name _;
+
+              location / {
+                      # First attempt to serve request as file, then
+                      # as directory, then fall back to displaying a 404.
+                      try_files $uri $uri/ =404;
+              }
+
+              # pass PHP scripts to FastCGI server
+              #
+              location ~ \.php$ {
+                    include snippets/fastcgi-php.conf;
+              
+                    # With php-fpm (or other unix sockets):
+                    fastcgi_pass unix:/run/php/php7.4-fpm.sock;
+                    # With php-cgi (or other tcp sockets):
+                    # fastcgi_pass 127.0.0.1:9000;
+              }
+
+              # deny access to .htaccess files, if Apache's document root
+              # concurs with nginx's one
+              #
+              #location ~ /\.ht {
+              #       deny all;
+              #}
       }
+    marker_begin: "# Default server configuration"
+    marker_end: "# Virtual Host configuration for example.com"
+    marker: "{mark}"
+    state: present
+  notify:
+    - Reload Nginx Service
+    - Restart Nginx Service
 
-- name: Condigrue mail Folders
+- name: Update postfix virtual mailbox config
   become: yes
   blockinfile:
-    marker: "{mark}"
-    marker_begin: "# These mailboxes are widely used and could perhaps be created automatically:"
-    marker_end: "# If you have a virtual \"All messages\" mailbox:"
-    path: /etc/dovecot/conf.d/15-mailboxes.conf
+    path: /etc/postfix/main.cf
+    marker: "# {mark} ANSIBLE MANAGED BLOCK virtual mailbox"
     block: |
-        mailbox Drafts {
-          auto = create
-          special_use = \Drafts
-        }
-        mailbox Junk {
-          auto = create
-          special_use = \Junk
-        }
-        mailbox Trash {
-          auto = create
-          special_use = \Trash
-        }
+      virtual_transport = lmtp:unix:private/dovecot-lmtp
+      virtual_mailbox_domains =
+        proxy:mysql:/etc/postfix/sql/virtual_domains_maps.cf
+      virtual_mailbox_maps =
+        proxy:mysql:/etc/postfix/sql/virtual_mailbox_maps.cf,
+        proxy:mysql:/etc/postfix/sql/virtual_alias_domain_mailbox_maps.cf
+      virtual_alias_maps =
+        proxy:mysql:/etc/postfix/sql/virtual_alias_maps.cf,
+        proxy:mysql:/etc/postfix/sql/virtual_alias_domain_maps.cf,
+        proxy:mysql:/etc/postfix/sql/virtual_alias_domain_catchall_maps.cf
+      virtual_mailbox_base = /var/vmail
+      virtual_minimum_uid = 2000
+      virtual_uid_maps = static:2000
+      virtual_gid_maps = static:2000
 
-        # For \Sent mailboxes there are two widely used names. We'll mark both of
-        # them as \Sent. User typically deletes one of them if duplicates are created.
-        mailbox Sent {
-          auto = create
-          special_use = \Sent
-        }
-
-- name: Restart Dovecot Service
+- name: Update postfix virtual domains config
   become: yes
-  systemd:
-    name: dovecot
-    state: restarted
-    enabled: yes
+  blockinfile:
+    path: /etc/postfix/sql/virtual_domains_maps.cf
+    create: yes
+    block: |
+      user = postfix
+      password = {{ mariadb_postfix_password }}
+      hosts = localhost
+      dbname = postfix
+      query = SELECT domain FROM domain WHERE domain='%s' AND active = '1'
+
+- name: Update postfix virtual mailbox maps config
+  become: yes
+  blockinfile:
+    path: /etc/postfix/sql/virtual_mailbox_maps.cf
+    create: yes
+    block: |
+      user = postfix
+      password = {{ mariadb_postfix_password }}
+      hosts = localhost
+      dbname = postfix
+      query = SELECT maildir FROM mailbox WHERE username='%s' AND active = '1'
+
+- name: Update postfix virtual alias domain mailbox maps config
+  become: yes
+  blockinfile:
+    path: /etc/postfix/sql/virtual_alias_domain_mailbox_maps.cf
+    create: yes
+    block: |
+      user = postfix
+      password = {{ mariadb_postfix_password }}
+      hosts = localhost
+      dbname = postfix
+      query = SELECT maildir FROM mailbox,alias_domain WHERE alias_domain.alias_domain = '%d' and mailbox.username = CONCAT('%u', '@', alias_domain.target_domain) AND mailbox.active = 1 AND alias_domain.active='1'
+
+- name: Update postfix virtual alias maps config
+  become: yes
+  blockinfile:
+    path: /etc/postfix/sql/virtual_alias_maps.cf
+    create: yes
+    block: |
+      user = postfix
+      password = {{ mariadb_postfix_password }}
+      hosts = localhost
+      dbname = postfix
+      query = SELECT goto FROM alias WHERE address='%s' AND active = '1'
+
+- name: Update postfix virtual alias domain maps config
+  become: yes
+  blockinfile:
+    path: /etc/postfix/sql/virtual_alias_domain_maps.cf
+    create: yes
+    block: |
+      user = postfix
+      password = {{ mariadb_postfix_password }}
+      hosts = localhost
+      dbname = postfix
+      query = SELECT goto FROM alias,alias_domain WHERE alias_domain.alias_domain = '%d' and alias.address = CONCAT('%u', '@', alias_domain.target_domain) AND alias.active = 1 AND alias_domain.active='1'
+
+- name: Update postfix virtual alias domain catchall config
+  become: yes
+  blockinfile:
+    path: /etc/postfix/sql/virtual_alias_domain_catchall_maps.cf
+    create: yes
+    block: |
+      user = postfix
+      password = {{ mariadb_postfix_password }}
+      hosts = localhost
+      dbname = postfix
+      query = SELECT goto FROM alias,alias_domain WHERE alias_domain.alias_domain = '%d' and alias.address = CONCAT('@', alias_domain.target_domain) AND alias.active = 1 AND alias_domain.active='1'
+
+- name: Update dovecot sql auth file
+  become: yes
+  blockinfile:
+    path: /etc/dovecot/dovecot-sql.conf.ext
+    block: |
+      driver = mysql
+      connect = host=localhost dbname=postfix user=postfix password={{ mariadb_postfix_password }}
+      default_pass_scheme = SHA512
+      password_query = SELECT username AS user,password FROM mailbox WHERE username = '%u' AND active='1'
+      user_query = SELECT maildir, 2000 AS uid, 2000 AS gid FROM mailbox WHERE username = '%u' AND active='1'
+      iterate_query = SELECT username AS user FROM mailbox
+
+
+- name: Make postfix sql executable
+  become: yes
+  shell: |
+      chmod 640 /etc/postfix/sql/*
+      setfacl -R -m u:postfix:r /etc/postfix/sql/*
+
+- name: Ensure group vmail exists
+  group:
+    name: vmail
+    state: present
+
+- name: Add user vmail
+  become: yes
+  user:
+    name: vmail
+    group: vmail
+    uid: 2000
+    create_home: false
+
+- name: Create Directory and give ownership
+  become: yes
+  shell: |
+    mkdir -p /var/vmail/ && chown -R vmail:vmail /var/vmail/
   notify:
     - Restart Postfix Service
+    - Restart Dovecot Service
+
+

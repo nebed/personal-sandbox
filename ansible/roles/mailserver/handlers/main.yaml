@@ -4,3 +4,24 @@
     name: postfix
     state: restarted
     enabled: yes
+
+- name: Restart Dovecot Service
+  become: yes
+  systemd:
+    name: dovecot
+    state: restarted
+    enabled: yes
+
+- name: Reload Nginx Service
+  become: yes
+  systemd:
+    name: nginx
+    state: reloaded
+    enabled: yes
+
+- name: Restart Nginx Service
+  become: yes
+  systemd:
+    name: nginx
+    state: restarted
+    enabled: yes
