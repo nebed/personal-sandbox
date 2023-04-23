@@ -25,3 +25,17 @@
     name: nginx
     state: restarted
     enabled: yes
+
+- name: Restart Redis Service
+  become: yes
+  systemd:
+    name: redis
+    state: restarted
+    enabled: yes
+
+- name: Restart Rspamd Service
+  become: yes
+  systemd:
+    name: rspamd
+    state: restarted
+    enabled: yes
