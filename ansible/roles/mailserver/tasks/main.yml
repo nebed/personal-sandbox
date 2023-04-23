@@ -645,8 +645,12 @@
   become: yes
   blockinfile:
     path: /etc/dovecot/conf.d/90-sieve.conf
-    insertafter: 'ˆplugin'
+    marker_begin: "plugin {"
+    marker_end: "}"
+    marker: "{mark}"
+    state: present
     block: |
+      sieve = file:~/sieve;active=~/.dovecot.sieve
       # Move to Junk folder
       sieve_after = /etc/dovecot/sieve/move-spam-to-junk.sieve
       sieve_plugins = sieve_imapsieve sieve_extprograms
@@ -685,6 +689,8 @@
   shell: |
     mkdir -p /var/vmail/ && chown -R vmail:vmail /var/vmail/
   notify:
+    - Restart Nginx Service
+    - Reload Nginx Service
     - Restart Postfix Service
     - Restart Dovecot Service
 
