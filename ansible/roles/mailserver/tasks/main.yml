@@ -285,7 +285,7 @@
 
 - name: configure dovecot imap for sieve
   become: yes
-  blockinfile:
+  lineinfile:
     path: /etc/dovecot/conf.d/20-imap.conf
     regexp: '^\s*#mail_plugins'
     line: "   mail_plugins = $mail_plugins imap_sieve"
