@@ -64,6 +64,7 @@ locals {
   mariadb_root_password_secret       = "postbox-mariadb-root-password"
   mariadb_postfix_password_secret    = "postbox-mariadb-postfix-password"
   postfixadmin_setup_password_secret = "postfixadmin-setup-password"
+  roundcube_des_key_secret           = "roundcube-des-key"
 
   cname_records = flatten([
     for dns, content in local.domains : [

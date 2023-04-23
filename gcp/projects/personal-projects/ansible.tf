@@ -8,6 +8,8 @@ locals {
     postfixadmin_setup_password = data.google_secret_manager_secret_version.postfixadmin_setup_password.secret_data
     domainlist                  = local.domainlist
     postfixadmin_version        = "3.3.13"
+    roundcube_version           = "1.6.1"
+    roundcube_des_key           = data.google_secret_manager_secret_version.roundcube_des_key.secret_data
   }
 
   domainlist = [
@@ -79,4 +81,8 @@ data "google_secret_manager_secret_version" "mariadb_postfix_password" {
 
 data "google_secret_manager_secret_version" "postfixadmin_setup_password" {
   secret = local.postfixadmin_setup_password_secret
+}
+
+data "google_secret_manager_secret_version" "roundcube_des_key" {
+  secret = local.roundcube_des_key_secret
 }

@@ -304,8 +304,71 @@
     CREATE DATABASE IF NOT EXISTS postfix;
     CREATE OR REPLACE USER 'postfix'@'%' IDENTIFIED BY '{{ mariadb_postfix_password }}';
     GRANT ALL PRIVILEGES ON postfix.* TO 'postfix'@'%';
+    CREATE DATABASE IF NOT EXISTS roundcube;
+    CREATE OR REPLACE USER 'roundcube'@'%' IDENTIFIED BY '{{ mariadb_postfix_password }}';
+    GRANT ALL PRIVILEGES ON roundcube.* TO roundcube@'%';
     FLUSH PRIVILEGES;
     EOF
+
+- name: Remove roundcube directory
+  become: yes
+  file:
+    path: /opt/roundcube
+    state: absent
+
+- name: Download Roundcube
+  unarchive:
+    src: https://github.com/roundcube/roundcubemail/releases/download/{{ roundcube_version }}/roundcubemail-{{ roundcube_version }}-complete.tar.gz
+    dest: /opt
+    remote_src: yes
+
+- name: Change roundcube directory name
+  become: yes
+  shell: mv /opt/roundcubemail-{{ roundcube_version }} /opt/roundcube
+
+- name: Create a roundcube symlink in html 
+  become: yes
+  file:
+    src: /opt/roundcube
+    dest: /var/www/html/roundcube
+    state: link
+
+- name: www-data user own temps, logs and schema
+  become: yes
+  shell: |
+    chown -R www-data:www-data /opt/roundcube/temp/ /opt/roundcube/logs/
+    mysql roundcube < /opt/roundcube/SQL/mysql.initial.sql --force
+
+- name: Add roundcube config
+  become: yes
+  blockinfile:
+    path: /opt/roundcube/config/config.inc.php
+    create: yes
+    block: |
+      <?php
+      $config['db_dsnw'] = 'mysql://roundcube:{{ mariadb_postfix_password }}@127.0.0.1/roundcube';
+      $config['imap_host'] = [{% for item in domainlist %}'ssl://{{ item.mail_domain }}:993'{% if not loop.last %}, {% endif %}{% endfor %}];
+      $config['smtp_host'] = [{% for item in domainlist %}'ssl://{{ item.mail_domain }}:993' => 'tls://{{ item.mail_domain }}:587'{% if not loop.last %}, {% endif %}{% endfor %}];
+      $config['support_url'] = '';
+      $config['des_key'] = '{{ roundcube_des_key }}';
+      $config['product_name'] = 'Nebed Postbox';
+      $config['plugins'] = ['acl', 'additional_message_headers', 'archive', 'attachment_reminder', 'emoticons'];
+
+- name: Remove roundcube installer
+  become: yes
+  file:
+    path: /opt/roundcube/installer
+    state: absent
+
+- name: Add hostnames to hosts
+  become: yes
+  lineinfile:
+    path: /etc/hosts
+    regexp: '(127.0.0.1.*)$'
+    backrefs: yes
+    line: '\1 {{ item.mail_domain }}'
+  with_items: 
+    - "{{ domainlist }}"
 
 - name: Remove postfixadmin directory
   become: yes
