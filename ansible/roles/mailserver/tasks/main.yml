@@ -611,7 +611,7 @@
               fileinto "Junk";
       }
 
-- name: Sieve {{ item.name }} config
+- name: Sieve report config
   become: yes
   blockinfile:
     create: yes
@@ -623,12 +623,7 @@
     - {name: ham}
     - {name: spam}
 
-- name: Compile sieve config
-  become: yes
-  shell: |
-    sievec /etc/dovecot/sieve/move-spam-to-junk.sieve && sievec /etc/dovecot/sieve/report-spam.sieve && sievec /etc/dovecot/sieve/report-ham.sieve
-
-- name: Sieve {{ item.name }} script
+- name: Sieve report script
   become: yes
   blockinfile:
     create: yes
@@ -643,7 +638,8 @@
 - name: Make Sieve script executable
   become: yes
   shell: |
-     sudo chmod u=rwx,go= /etc/dovecot/sieve/learn-{spam,ham}.sh
+     sudo chmod u=rwx,go= /etc/dovecot/sieve/learn-spam.sh
+     sudo chmod u=rwx,go= /etc/dovecot/sieve/learn-ham.sh
 
 - name: Update sieve config in dovecot
   lineinfile:
@@ -697,6 +693,14 @@
   become: yes
   shell: |
     mkdir -p /var/vmail/ && chown -R vmail:vmail /var/vmail/
+  notify:
+    - Restart Postfix Service
+    - Restart Dovecot Service
+
+- name: Compile sieve config
+  become: yes
+  shell: |
+    sievec /etc/dovecot/sieve/move-spam-to-junk.sieve && sievec /etc/dovecot/sieve/report-spam.sieve && sievec /etc/dovecot/sieve/report-ham.sieve
   notify:
     - Restart Postfix Service
     - Restart Dovecot Service
