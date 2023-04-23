@@ -638,8 +638,8 @@
 - name: Make Sieve script executable
   become: yes
   shell: |
-     sudo chmod u=rwx,go= /etc/dovecot/sieve/learn-spam.sh
-     sudo chmod u=rwx,go= /etc/dovecot/sieve/learn-ham.sh
+     chmod u=rwx,go= /etc/dovecot/sieve/learn-spam.sh
+     chmod u=rwx,go= /etc/dovecot/sieve/learn-ham.sh
 
 - name: Update sieve config in dovecot
   lineinfile:
@@ -656,6 +656,7 @@
 - name: Add plugin sieve config to dovecot
   become: yes
   blockinfile:
+    path: /etc/dovecot/conf.d/90-sieve.conf
     insertafter: 'ˆplugin {'
     block: |
       # Move to Junk folder
