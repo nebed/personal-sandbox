@@ -348,7 +348,7 @@
       <?php
       $config['db_dsnw'] = 'mysql://roundcube:{{ mariadb_postfix_password }}@127.0.0.1/roundcube';
       $config['imap_host'] = [{% for item in domainlist %}'ssl://{{ item.mail_domain }}:993'{% if not loop.last %}, {% endif %}{% endfor %}];
-      $config['smtp_host'] = [{% for item in domainlist %}'ssl://{{ item.mail_domain }}:993' => 'tls://{{ item.mail_domain }}:587'{% if not loop.last %}, {% endif %}{% endfor %}];
+      $config['smtp_host'] = [{% for item in domainlist %}'{{ item.mail_domain }}' => 'tls://{{ item.mail_domain }}:587'{% if not loop.last %}, {% endif %}{% endfor %}];
       $config['support_url'] = '';
       $config['des_key'] = '{{ roundcube_des_key }}';
       $config['product_name'] = 'Nebed Postbox';
