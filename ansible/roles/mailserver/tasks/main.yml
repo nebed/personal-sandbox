@@ -50,6 +50,7 @@
       smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
       smtp_sasl_security_options = noanonymous
       smtp_sender_dependent_authentication = yes
+      message_size_limit = 30720000
 
 - name: Create Postfix Hash map
   become: yes
