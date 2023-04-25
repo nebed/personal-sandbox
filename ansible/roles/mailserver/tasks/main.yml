@@ -70,7 +70,7 @@
   apt:
     update_cache: yes
 
-- name: Install certbot
+- name: Install Required applications
   become: yes
   apt:
     state: present
