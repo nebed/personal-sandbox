@@ -13,6 +13,7 @@ locals {
       txt = {
         "mailo._domainkey.mail." = "\"k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDBSXGtyNG/OXdOiMKKdRvf4ROo51lfr9p5qhkNbnXZGxy4QpZ3P3YnMYJLx/dRUiMyjOR9jtuZHeAeO4aQZtixO4dZBNx4oCt+5ceKX9RF1qaaBPaDwFRse5mZ4qr7fY54VphrmZlgmtHWW9FtKWv2VOuojo3kxXQgdYcK4Eh4VQIDAQAB\""
         "mail."                  = "\"v=spf1 include:mailgun.org ~all\""
+        "_dmarc."                = "\"v=DMARC1;\" \"p=none;\" \"rua=mailto:postmaster@nebed.io;\""
       }
       mx = {
         "" = "0 mail.nebed.io."
@@ -32,6 +33,7 @@ locals {
       txt = {
         "smtp._domainkey.mail." = "\"k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC70s7NGDlPRLs3iBNzdTH2FrjPwx+wfm71hBEqeqDFGHKbzbPD+PxvTmukPQzR1aCUQFB9DMj3/IejXuuqzb1Ec4ztwXLVyfhqOVWjFRzkStXybjoVFERX8OoHKnmc8gSt65RaviLBi1VPrr/1CBuI+fPgY/0ecoXtXo2QEDIUOwIDAQAB\""
         "mail."                 = "\"v=spf1 include:mailgun.org ~all\""
+        "_dmarc."               = "\"v=DMARC1;\" \"p=none;\" \"rua=mailto:postmaster@euroborosconsulting.com;\""
 
       }
       mx = {
@@ -52,6 +54,7 @@ locals {
       txt = {
         "smtp._domainkey.mail." = "\"k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDK+A4KgHeoIaG72mkjCYEpbAbnuekyuyCzBn3/09V07ye9mr1W9jhjOeRseJS4INt62UVL3ds0xbxb2/6jZL84uysruv4Y4TaY0bOAverxeCB38qTK0cgn133Si0LmyJ8tDqUaJ5AluAE4/x/FpmE8W8tqeqkjtl58g4Ae30zQNwIDAQAB\""
         "mail."                 = "\"v=spf1 include:mailgun.org ~all\""
+        "_dmarc."               = "\"v=DMARC1;\" \"p=none;\" \"rua=mailto:postmaster@strataware.io;\""
       }
       mx = {
         "" = "0 mail.strataware.io."

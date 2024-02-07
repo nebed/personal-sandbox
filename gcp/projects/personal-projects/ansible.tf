@@ -26,10 +26,16 @@ locals {
   playbook_path   = "../../../ansible/${var.playbook}"
 }
 
+data "archive_file" "ansible_files" {
+  type        = "zip"
+  source_dir = "../../../ansible"
+  output_path = "${abspath(path.root)}/.terraform/ansible.zip"
+}
+
 resource "null_resource" "ansible" {
 
   triggers = {
-    always_run = "${timestamp()}"
+    always_run = "${data.archive_file.ansible_files.output_sha256}${sha256(jsonencode(local.extra_vars))}"
   }
 
   provisioner "local-exec" {
