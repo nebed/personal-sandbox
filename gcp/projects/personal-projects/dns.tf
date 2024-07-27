@@ -6,6 +6,7 @@ locals {
         "blog."         = "hashnode.network."
         "gt2btfmznwgo." = "gv-xhpxkf75yaju43.dv.googlehosted.com."
         "email.mail."   = "mailgun.org."
+        "orbyanduche."  = "mail.nebed.io."
       }
       a = {
         "mail." = google_compute_address.postbox.address
