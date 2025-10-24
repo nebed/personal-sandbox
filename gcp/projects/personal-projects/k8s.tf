@@ -17,6 +17,10 @@ resource "google_container_cluster" "sandbox" {
     enable_components = ["SYSTEM_COMPONENTS"]
   }
 
+  workload_identity_config {
+    workload_pool = "${data.google_project.current_project.project_id}.svc.id.goog"
+  }
+
 }
 
 
@@ -36,5 +40,12 @@ resource "google_container_node_pool" "workload" {
     disk_type = "pd-balanced"
     image_type = "UBUNTU_CONTAINERD"
     spot = true
+    resource_labels  = {
+       "goog-gke-node-pool-provisioning-model" = "spot"
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [ node_config[0].kubelet_config ]
   }
 }

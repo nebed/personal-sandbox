@@ -1,0 +1,56 @@
+{{- $environment := deepCopy $.Values.global.environment }}
+{{- range $serviceName, $service := .Values.services }}
+{{- if not (or (index $service (printf "%sRef" $environment.name)) $service.ref) }}
+{{- continue }}
+{{- end }}
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ ternary (printf "%s-%s" $serviceName $environment.name) $serviceName (has $environment.name (list "dev" "hotfix" "lab" "staging")) }}
+  namespace: argocd
+
+spec:
+  sourceRepos:
+    - https://github.com/nebed/{{ $service.repo }}.git
+    - copinfra.azurecr.io
+
+  destinations:
+    {{- if has $environment.name (list "dev" "hotfix" "lab" "staging")}}
+    {{- if hasKey $service "overrideNamespace" }}
+    - namespace: {{ or $service.namespace $serviceName }}
+      server: https://kubernetes.default.svc
+    {{- else}}
+    - namespace: {{ or $service.namespace $serviceName }}-{{ $environment.name }}
+      server: https://kubernetes.default.svc
+    {{- end }}
+    {{- else }}
+    - namespace: {{ or $service.namespace $serviceName }}
+      server: https://kubernetes.default.svc
+    {{- end }}
+    {{- if $service.isRegistry }}
+    - namespace: '*'
+      server: https://kubernetes.default.svc
+    {{- end }}
+    {{- include "additionalPermittedNamespaces" $serviceName | indent 4 }}
+    {{- range $namespace := default list $service.additionalNamespaces }}
+    - namespace: {{ $namespace }}
+      server: https://kubernetes.default.svc
+    {{- end }}
+
+  clusterResourceWhitelist:
+    {{- if $service.isRegistry }}
+    - group: ''
+      kind: Namespace
+    {{- end }}
+    {{- include "clusterResourceWhitelist" $serviceName | indent 4 }}
+
+  {{- if not $service.disableOrphanWarning }}
+  orphanedResources:
+    warn: true
+    ignore:
+      {{- range $service.ignoreOrphanedResources }}
+      - {{ . | toJson }}
+      {{- end }}
+  {{- end }}
+---
+{{ end }}

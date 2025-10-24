@@ -1,0 +1,12 @@
+{{- define "helmValues" -}}
+# Everyone gets environment information.
+global:
+  environment: {{ toJson .environment }}
+  registryState:
+    {{- toYaml .service | nindent 4 }}
+service:
+  registryState: {{ toJson .service }}
+{{- if .baseValues }}
+{{- toYaml .baseValues }}
+{{- end }}
+{{- end -}}

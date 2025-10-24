@@ -1,0 +1,7 @@
+registry:
+  services:
+    argocd-rbac:
+      repo: personal-sandbox
+      namespace: argocd
+      path: gcp/projects/personal-projects/charts/argocd-rbac
+      overrideNamespace: true

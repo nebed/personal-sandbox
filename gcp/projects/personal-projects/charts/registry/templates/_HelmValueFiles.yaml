@@ -1,0 +1,11 @@
+{{- define "helmValueFiles" -}}
+{{- $baseEnvName := .environment.name | trimSuffix "wrkr" -}}
+- values.yaml
+- values.{{ $baseEnvName }}.yaml
+- ci-state.yaml
+{{- if .additionalValueFiles }}
+{{- range $valueFile := .additionalValueFiles }}
+- {{ $valueFile }}
+{{- end }}
+{{- end }}
+{{- end -}}

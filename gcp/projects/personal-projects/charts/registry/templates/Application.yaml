@@ -1,0 +1,108 @@
+{{- $baseValues := .Values.baseValues }}
+{{- range $serviceName, $service := .Values.services }}
+{{- $environment := deepCopy $.Values.global.environment }}
+
+# Safety check to ensure that the service follows conventions and that there
+# are no newlines or other control characters.
+{{- if not (regexMatch "^[a-z0-9\\-]+$" $serviceName) }}
+{{- fail "Service name is invalid as it does not match the regex" }}
+{{- end }}
+
+# Don't deploy services that aren't ready to deploy to this environment yet.
+{{- if not (or (index $service (printf "%sRef" $environment.name)) $service.ref) }}
+{{- continue }}
+{{- end }}
+
+{{- if (and $service.isRegistry ( not (contains "root-registry" $.Release.Name ))) }}
+{{- fail "Do not declare child registries anywhere other than the root-registry" }}
+{{- end }}
+
+{{- $baseEnvName := $environment.name }}
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ ternary (printf "%s-%s" $serviceName $environment.name) $serviceName (has $environment.name (list "dev" "hotfix" "lab" "staging")) }}
+  namespace: argocd
+
+spec:
+  project: {{ ternary (printf "%s-%s" $serviceName $environment.name) $serviceName  (has $environment.name (list "dev" "hotfix" "lab" "staging")) }}
+
+  source:
+    repoURL: https://github.com/nebed/{{ $service.repo }}.git
+    targetRevision: {{ or (index $service (printf "%sRef" $environment.name)) $service.ref }}
+    path: {{ $service.path }}
+
+    helm:
+      # Credentials are necessary to use private ACR as a chart dependency with OCI
+      passCredentials: true
+      {{- if $service.skipCrds }}
+      skipCrds: true
+      {{- end }}
+      {{- if has $environment.name (list "dev" "hotfix" "lab" "staging")}}
+      releaseName: {{ or $service.releaseName $serviceName }}-{{ $environment.name }}
+      {{- else }}
+      releaseName: {{ or $service.releaseName $serviceName }}
+      {{- end }}
+      ignoreMissingValueFiles: true
+      valueFiles:
+        {{- include "helmValueFiles" (dict "environment" $environment "additionalValueFiles" $service.additionalValueFiles ) | nindent 8 }}
+      values: |
+        {{- include "helmValues" (dict "environment" $environment "service" $service "baseValues" $baseValues ) | nindent 8 }}
+
+  destination:
+    # accepts name or server
+    server: https://kubernetes.default.svc
+    {{- if has $environment.name (list "dev" "hotfix" "lab" "staging")}}
+    {{- if hasKey $service "overrideNamespace" }}
+    namespace: {{ or $service.namespace $serviceName }}
+    {{- else }}
+    namespace: {{ or $service.namespace $serviceName }}-{{ $environment.name }}
+    {{- end }}
+    {{- else }}
+    namespace: {{ or $service.namespace $serviceName }}
+    {{- end }}
+
+  syncPolicy:
+    syncOptions:
+      {{- if $service.isRegistry }}
+      - ApplyOutOfSyncOnly=true
+      {{- end }}
+      - FailOnSharedResource=true
+    {{- if not $service.isRegistry }}
+    automated:
+      # Pruning is disabled for registries, to make deleting applications
+      # require more explicit intent; this avoids small mistakes causing
+      # disastrous consequences.
+      prune: true
+      # Self-heal is disabled for registries in order to allow transient changes
+      # to applications via ArgoCD, for use in emergencies or testing.
+      selfHeal: true
+    {{- else }}
+    # This ensures that registries still auto-sync.
+    automated: {}
+    {{- end }}
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 1
+        maxDuration: 5m
+
+  ignoreDifferences:
+    {{- if $service.isRegistry }}
+    # Don't re-enable self-healing automatically unless something else changed
+    # too. This lets developers make manual changes when needed—either in an
+    # incident response, or just when experimenting or testing a change.
+    - group: argoproj.io
+      kind: Application
+      jqPathExpressions:
+        - '.spec.syncPolicy.syncOptions[0]'
+    {{- end }}
+    {{- if $service.ignoreDifferences }}
+    {{- range $diff := $service.ignoreDifferences }}
+    - {{ toJson $diff }}
+    {{- end }}
+    {{- end }}
+---
+{{- end }}

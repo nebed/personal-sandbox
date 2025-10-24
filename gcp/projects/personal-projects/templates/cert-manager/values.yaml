@@ -1,0 +1,73 @@
+installCRDs: true
+extraArgs:
+  - "--issuer-ambient-credentials"
+  - "--cluster-issuer-ambient-credentials"
+
+dns01RecursiveNameserversOnly: true
+dns01RecursiveNameservers: "1.1.1.1:53,8.8.8.8:53"
+replicaCount: 1
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+podLabels:
+  "app": "cert-manager"
+serviceAccount:
+  labels: {}
+  annotations: {}
+
+resources:
+  limits:
+    memory: 100Mi
+  requests:
+    cpu: 4m
+    memory: 100Mi
+
+cainjector:
+  replicaCount: 1
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+  podLabels:
+    "app": "cert-manager-ca-injector"
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - cert-manager-ca-injector
+        topologyKey: kubernetes.io/hostname
+
+  resources:
+    requests:
+      cpu: 4m
+      memory: 50Mi
+    limits:
+      memory: 50Mi
+
+webhook:
+  replicaCount: 1
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+  podLabels:
+    "app": "cert-manager-webhook"
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - cert-manager-webhook
+        topologyKey: kubernetes.io/hostname
+  resources:
+    requests:
+      cpu: 4m
+      memory: 50Mi
+    limits:
+      memory: 50Mi
+

@@ -1,0 +1,8 @@
+apiVersion: v2
+name: root-registry
+version: 0.0.1
+type: application
+dependencies:
+  - name: registry
+    version: 0.0.1
+    repository: file://../charts/registry

@@ -29,6 +29,11 @@ resource "google_compute_address" "postbox" {
   network_tier = "STANDARD"
 }
 
+resource "google_compute_address" "k8s_sandbox_ingress" {
+  name         = "k8s-sandbox-public-ip"
+  network_tier = "STANDARD"
+}
+
 resource "google_compute_instance" "mailserver" {
   name         = local.vm_config.name
   machine_type = local.vm_config.size

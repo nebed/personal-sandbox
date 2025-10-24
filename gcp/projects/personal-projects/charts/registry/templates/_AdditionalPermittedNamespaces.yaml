@@ -1,0 +1,13 @@
+{{ define "additionalPermittedNamespaces" }}
+
+
+{{ if eq . "cert-manager" }}
+- namespace: '*'
+  server: https://kubernetes.default.svc
+{{ else if has . (list "coredns-config" ) }}
+- namespace: 'kube-system'
+  server: https://kubernetes.default.svc
+{{ end }}
+
+
+{{ end }}

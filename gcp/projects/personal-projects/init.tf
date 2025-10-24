@@ -16,3 +16,12 @@ provider "google" {
   project = "personal-projects-384213"
   region  = "us-central1"
 }
+
+provider "google-beta" {
+  project = "personal-projects-384213"
+  region  = "us-central1"
+}
+
+data "google_project" "current_project" {}
+
+data "google_client_config" "provider" {}

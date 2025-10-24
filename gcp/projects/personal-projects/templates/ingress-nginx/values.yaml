@@ -1,0 +1,21 @@
+controller:
+  resources:
+    limits:
+      memory: 300Mi
+    requests:
+      cpu: 10m
+      memory: 100Mi
+
+  extraArgs:
+    default-ssl-certificate: ${default_tls_certificate}
+  replicaCount: 1
+  ingressClassResource:
+    name: ${class_resource_name}
+    controllerValue: ${controller_value}
+  admissionWebhooks:
+    enabled: true
+    timeoutSeconds: 30
+  service:
+    annotations:
+      cloud.google.com/network-tier: "Standard"
+    loadBalancerIP: ${load_balancer_ip}

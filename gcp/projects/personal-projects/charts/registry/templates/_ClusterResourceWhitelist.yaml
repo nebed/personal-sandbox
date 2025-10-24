@@ -1,0 +1,23 @@
+{{ define "clusterResourceWhitelist" }}
+
+
+{{ if has . (list "reloader" "external-dns") }}
+- group: rbac.authorization.k8s.io
+  kind: ClusterRole
+- group: rbac.authorization.k8s.io
+  kind: ClusterRoleBinding
+{{ end }}
+{{ if has . (list "") }}
+- group: apiextensions.k8s.io
+  kind: CustomResourceDefinition
+{{ end }}
+{{ if has . (list "") }}
+- group: gateway.networking.k8s.io
+  kind: "*"
+{{ end }}
+{{ if has . (list "prometheus-operator") }}
+- group: "*"
+  kind: "*"
+{{ end }}
+
+{{ end }}

@@ -1,0 +1,4 @@
+apiVersion: v2
+name: root-registry-provisioner
+version: 0.0.1
+type: application

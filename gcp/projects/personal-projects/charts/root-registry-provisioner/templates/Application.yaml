@@ -1,0 +1,137 @@
+{{- if kindIs "string" .Values.environment }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-registry
+  namespace: argocd
+
+spec:
+  project: root-registry
+
+  source:
+    repoURL: https://github.com/nebed/personal-sandbox.git
+    targetRevision: master
+    path: gcp/projects/personal-projects/root-registry
+
+    helm:
+      # Necessary to use private ACR as a chart dependency with OCI
+      passCredentials: true
+      ignoreMissingValueFiles: true
+      valueFiles:
+        - values.yaml
+        - values.{{ .Values.environment }}.yaml
+        - ci-state.yaml
+      values: |
+        global:
+          environment:
+            name: {{ .Values.environment }}
+
+  destination:
+    namespace: argocd
+    server: https://kubernetes.default.svc
+
+  syncPolicy:
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+      - FailOnSharedResource=true
+    automated:
+      # Disable pruning for registries, to make deleting applications require
+      # more explicit intent; this avoids small mistakes causing disastrous
+      # consequences.
+      prune: false
+      # Allow differences to be ignored, in order to support ephemeral rollbacks
+      # and manual changes during an emergency; it will generally be reset on
+      # the next sync, for example, by a commit to the GitOps repo. However, if
+      # the application uses a stable Git ref (e.g. a branch name) and chooses
+      # to embed the image name in the application repo rather than the
+      # registry, then there may be nothing in the registry that forces a sync.
+      # This is why we choose to disable selfHealing altogether rather than
+      # simply ignoring differences in the sync process: it better raises
+      # attention to out-of-sync applications.
+      selfHeal: false
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+
+  ignoreDifferences:
+    # Don't re-enable self-healing automatically unless something else changed
+    # too. This lets developers make manual changes when needed—either in an
+    # incident response, or just when experimenting or testing a change.
+    - group: argoproj.io
+      kind: Application
+      jqPathExpressions:
+        - '.spec.syncPolicy.syncOptions[0]'
+
+{{- else }}
+{{- range $environment := .Values.environment }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-registry-{{ $environment }}
+  namespace: argocd
+
+spec:
+  project: root-registry
+
+  source:
+    repoURL: https://github.com/nebed/personal-sandbox.git
+    targetRevision: master
+    path: root-registry
+
+    helm:
+      # Necessary to use private ACR as a chart dependency with OCI
+      passCredentials: true
+      ignoreMissingValueFiles: true
+      valueFiles:
+        - values.yaml
+        - values.{{ $environment }}.yaml
+        - ci-state.yaml
+      values: |
+        global:
+          environment:
+            name: {{ $environment }}
+
+  destination:
+    namespace: argocd
+    server: https://kubernetes.default.svc
+
+  syncPolicy:
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+      - FailOnSharedResource=true
+    automated:
+      # Disable pruning for registries, to make deleting applications require
+      # more explicit intent; this avoids small mistakes causing disastrous
+      # consequences.
+      prune: false
+      # Allow differences to be ignored, in order to support ephemeral rollbacks
+      # and manual changes during an emergency; it will generally be reset on
+      # the next sync, for example, by a commit to the GitOps repo. However, if
+      # the application uses a stable Git ref (e.g. a branch name) and chooses
+      # to embed the image name in the application repo rather than the
+      # registry, then there may be nothing in the registry that forces a sync.
+      # This is why we choose to disable selfHealing altogether rather than
+      # simply ignoring differences in the sync process: it better raises
+      # attention to out-of-sync applications.
+      selfHeal: false
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
+
+  ignoreDifferences:
+    # Don't re-enable self-healing automatically unless something else changed
+    # too. This lets developers make manual changes when needed—either in an
+    # incident response, or just when experimenting or testing a change.
+    - group: argoproj.io
+      kind: Application
+      jqPathExpressions:
+        - '.spec.syncPolicy.syncOptions[0]'
+{{- end }}
+{{- end }}

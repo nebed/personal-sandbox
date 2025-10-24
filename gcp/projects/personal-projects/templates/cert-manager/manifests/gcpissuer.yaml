@@ -1,0 +1,19 @@
+apiVersion: cert-manager.io/v1
+kind: ${kind}
+metadata:
+  name: ${name}
+spec:
+  acme:
+    server: ${server}
+    email: ${email}
+    privateKeySecretRef:
+      name: ${secret_name}
+    solvers:
+    - selector:
+        dnsZones:
+        - nebed.io
+      dns01:
+        cloudDNS:
+          hostedZoneName: nebed-io
+          project: ${project_id}
+    
