@@ -34,10 +34,11 @@ configs:
           config:
             clientID: ${dex_github_client_id}
             clientSecret: $argocd-dex:dex.github.clientSecret
-            orgs:
-            - name: nebed
     resource.compareoptions: |
       ignoreResourceStatusField: all
 
 global:
   domain: argocd.sandbox.nebed.io
+
+rbac:
+  policy.default: ''

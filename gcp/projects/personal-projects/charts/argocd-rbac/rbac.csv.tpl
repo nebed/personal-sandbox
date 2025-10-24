@@ -9,3 +9,5 @@ p, role:argocd-admin, projects, delete, *, allow
 p, role:argocd-admin, projects, update, *, allow
 
 g, nebed, role:argocd-admin
+
+
