@@ -39,6 +39,3 @@ configs:
 
 global:
   domain: argocd.sandbox.nebed.io
-
-rbac:
-  policy.default: ''

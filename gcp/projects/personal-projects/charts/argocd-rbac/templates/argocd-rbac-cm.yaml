@@ -7,7 +7,7 @@ metadata:
     argocd.argoproj.io/sync-options: "ServerSideApply=true"
   name: argocd-rbac-cm
 data:
-  policy.default: role:readonly
+  policy.default: ''
   policy.csv: |
 {{ tpl (.Files.Get "rbac.csv.tpl") . | indent 4 }}
   scopes: '[groups, email]'
