@@ -1,7 +1,4 @@
 registry:
   services:
     argocd-rbac:
-      devRef: master
-      infraRef: master
-      eu-prodRef: master
-      us-prodRef: master
+      sandboxRef: master
