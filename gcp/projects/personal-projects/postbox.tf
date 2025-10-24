@@ -113,7 +113,7 @@ resource "null_resource" "local_ip" {
 
   provisioner "local-exec" {
 
-    command = "echo \"$(dig +short myip.opendns.com @resolver1.opendns.com)/32\" > ${local.local_ip_file}"
+    command = "echo \"$(curl https://ipinfo.io/ip)/32\" > ${local.local_ip_file}"
   }
 }
 
