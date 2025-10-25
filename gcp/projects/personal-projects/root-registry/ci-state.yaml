@@ -4,3 +4,5 @@ registry:
       sandboxRef: master
     sealed-secrets:
       sandboxRef: master
+    bitcoind:
+      sandboxRef: master
