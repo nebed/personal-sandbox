@@ -9,3 +9,7 @@ registry:
       repo: personal-sandbox
       namespace: sealed-secrets
       path: gcp/projects/personal-projects/charts/sealed-secrets
+    bitcoind:
+      repo: bitcoin-sandbox
+      namespace: bitcoind
+      path: bitcoin-helm
