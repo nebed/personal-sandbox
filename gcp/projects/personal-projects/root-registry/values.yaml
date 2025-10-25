@@ -5,3 +5,7 @@ registry:
       namespace: argocd
       path: gcp/projects/personal-projects/charts/argocd-rbac
       overrideNamespace: true
+    sealed-secrets:
+      repo: personal-sandbox
+      namespace: sealed-secrets
+      path: gcp/projects/personal-projects/charts/sealed-secrets

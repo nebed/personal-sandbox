@@ -2,3 +2,5 @@ registry:
   services:
     argocd-rbac:
       sandboxRef: master
+    sealed-secrets:
+      sandboxRef: master
