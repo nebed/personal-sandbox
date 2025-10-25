@@ -49,3 +49,29 @@ resource "google_container_node_pool" "workload" {
     ignore_changes = [ node_config[0].kubelet_config ]
   }
 }
+
+resource "google_container_node_pool" "bitcoin" {
+  name_prefix = "bitcoin-"
+  cluster    = google_container_cluster.sandbox.id
+  node_count = 1
+
+  management {
+    auto_repair = true
+    auto_upgrade = true
+  }
+
+  node_config {
+    machine_type = "c2d-standard-4"
+    disk_size_gb = 20
+    disk_type = "pd-balanced"
+    image_type = "UBUNTU_CONTAINERD"
+    spot = true
+    resource_labels  = {
+       "goog-gke-node-pool-provisioning-model" = "spot"
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [ node_config[0].kubelet_config ]
+  }
+}
