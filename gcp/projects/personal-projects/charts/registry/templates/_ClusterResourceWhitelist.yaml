@@ -1,7 +1,7 @@
 {{ define "clusterResourceWhitelist" }}
 
 
-{{ if has . (list "reloader" "external-dns") }}
+{{ if has . (list "reloader" "external-dns" "sealed-secrets") }}
 - group: rbac.authorization.k8s.io
   kind: ClusterRole
 - group: rbac.authorization.k8s.io
