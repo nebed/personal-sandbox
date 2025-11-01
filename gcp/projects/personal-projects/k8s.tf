@@ -11,11 +11,11 @@ resource "google_container_cluster" "sandbox" {
   subnetwork = data.google_compute_subnetwork.default.self_link
 
   logging_config {
-    enable_components = ["SYSTEM_COMPONENTS"]
+    enable_components = []
   }
   logging_service = "none"
   monitoring_config {
-    enable_components = ["SYSTEM_COMPONENTS"]
+    enable_components = []
   }
   monitoring_service = "none"
 
@@ -63,7 +63,7 @@ resource "google_container_node_pool" "bitcoin" {
   }
 
   node_config {
-    machine_type = "c2d-standard-4"
+    machine_type = "c2d-standard-2"
     disk_size_gb = 20
     disk_type = "pd-balanced"
     image_type = "UBUNTU_CONTAINERD"
