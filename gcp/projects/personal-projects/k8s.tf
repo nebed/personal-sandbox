@@ -13,9 +13,11 @@ resource "google_container_cluster" "sandbox" {
   logging_config {
     enable_components = ["SYSTEM_COMPONENTS"]
   }
+  logging_service = "none"
   monitoring_config {
     enable_components = ["SYSTEM_COMPONENTS"]
   }
+  monitoring_service = "none"
 
   workload_identity_config {
     workload_pool = "${data.google_project.current_project.project_id}.svc.id.goog"
