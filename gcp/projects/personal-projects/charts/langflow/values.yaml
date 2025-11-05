@@ -26,19 +26,19 @@ langflowide:
           persistentVolumeClaim:
             claimName: langflow-backend-pvc
       volumeMounts:
-        - name: langflow-backend-pvc
+        - name: backend-data
           mountPath: /app/flows
           subPath: flows
           readOnly: false
-        - name: langflow-backend-pvc
+        - name: backend-data
           mountPath: /tmp
           subPath: tmp
           readOnly: false
-        - name: langflow-backend-pvc
+        - name: backend-data
           mountPath: /app/data
           subPath: data
           readOnly: false
-        - name: langflow-backend-pvc
+        - name: backend-data
           mountPath: /app/db
           subPath: db
           readOnly: false
