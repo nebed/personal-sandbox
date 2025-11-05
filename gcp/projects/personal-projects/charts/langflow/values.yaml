@@ -16,7 +16,7 @@ langflowide:
       resources:
         requests:
           cpu: 0.1
-          memory: 200Mi
+          memory: 1Gi
       image:
         repository: langflowai/langflow
         imagePullPolicy: IfNotPresent
