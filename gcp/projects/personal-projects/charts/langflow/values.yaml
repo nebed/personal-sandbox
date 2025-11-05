@@ -1,4 +1,4 @@
-langflowIde:
+langflowide:
   nameOverride: langflow
   ingress:
     enabled: true

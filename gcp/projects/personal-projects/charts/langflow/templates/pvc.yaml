@@ -1,12 +1,12 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ .Values.langflowIde.langflow.backend.persistentVolume.claimName | quote }}
+  name: {{ .Values.langflowide.langflow.backend.persistentVolume.claimName | quote }}
 spec:
   accessModes:
     - ReadWriteOnce
   volumeMode: Filesystem
   resources:
     requests:
-      storage: {{ .Values.langflowIde.langflow.backend.persistentVolume.size | quote }}
-  storageClassName: {{ .Values.langflowIde.langflow.backend.persistentVolume.existingStorageClassName | quote }}
+      storage: {{ .Values.langflowide.langflow.backend.persistentVolume.size | quote }}
+  storageClassName: {{ .Values.langflowide.langflow.backend.persistentVolume.existingStorageClassName | quote }}
