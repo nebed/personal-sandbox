@@ -8,7 +8,8 @@ langflow-ide:
     hosts:
       - host: langflow.sandbox.nebed.io
         paths:
-        - /
+        - type: ImplementationSpecific
+          path: /
   langflow:
     backend:
       replicaCount: 1
