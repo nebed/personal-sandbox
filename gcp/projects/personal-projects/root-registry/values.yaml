@@ -13,3 +13,7 @@ registry:
       repo: bitcoin-sandbox
       namespace: bitcoind
       path: bitcoin-helm
+    langflow:
+      repo: personal-sandbox
+      namespace: langflow
+      path: gcp/projects/personal-projects/charts/langflow
