@@ -6,3 +6,5 @@ registry:
       sandboxRef: master
     bitcoind:
       sandboxRef: master
+    langflow:
+      sandboxRef: master
