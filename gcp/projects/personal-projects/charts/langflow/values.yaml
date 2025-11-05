@@ -17,6 +17,10 @@ langflowide:
         requests:
           cpu: 0.1
           memory: 200Mi
+      image:
+        repository: langflowai/langflow
+        imagePullPolicy: IfNotPresent
+        tag: 1.6.5
       persistentVolume:
         claimName: langflow-backend-pvc
         size: "50Gi"
