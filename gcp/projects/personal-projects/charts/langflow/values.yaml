@@ -7,4 +7,15 @@ langflow-ide:
       # kubernetes.io/tls-acme: "true"
     hosts:
       - host: langflow.sandbox.nebed.io
-        paths: []
+  langflow:
+    backend:
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: 0.2
+          memory: 500Mi
+    sqlite:
+      enabled: true
+      volume:
+        size: "1Gi"
+        existingStorageClassName: "standard"
