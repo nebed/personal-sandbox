@@ -46,6 +46,10 @@ langflowide:
           mountPath: /app/db
           subPath: db
           readOnly: false
+        - name: backend-data
+          mountPath: /app/.venv
+          subPath: .venv
+          readOnly: false
     frontend:
       resources:
         requests:
