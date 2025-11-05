@@ -1,0 +1,10 @@
+langflow-ide:
+  nameOverride: langflow
+  ingress:
+    enabled: true
+    annotations: {}
+      # kubernetes.io/ingress.class: nginx
+      # kubernetes.io/tls-acme: "true"
+    hosts:
+      - host: langflow.sandbox.nebed.io
+        paths: []
