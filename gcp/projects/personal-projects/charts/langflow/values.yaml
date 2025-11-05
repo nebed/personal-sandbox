@@ -17,6 +17,31 @@ langflow-ide:
         requests:
           cpu: 0.1
           memory: 200Mi
+      persistentVolume:
+        claimName: langflow-backend-pvc
+        size: "50Gi"
+        existingStorageClassName: "standard"
+      volumes:
+        - name: backend-data
+          persistentVolumeClaim:
+            claimName: langflow-backend-pvc
+      volumeMounts:
+        - name: langflow-backend-pvc
+          mountPath: /app/flows
+          subPath: flows
+          readOnly: false
+        - name: langflow-backend-pvc
+          mountPath: /tmp
+          subPath: tmp
+          readOnly: false
+        - name: langflow-backend-pvc
+          mountPath: /app/data
+          subPath: data
+          readOnly: false
+        - name: langflow-backend-pvc
+          mountPath: /app/db
+          subPath: db
+          readOnly: false
     frontend:
       resources:
         requests:
