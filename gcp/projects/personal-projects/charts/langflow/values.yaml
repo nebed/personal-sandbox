@@ -15,8 +15,13 @@ langflow-ide:
       replicaCount: 1
       resources:
         requests:
-          cpu: 0.2
-          memory: 500Mi
+          cpu: 0.1
+          memory: 200Mi
+    frontend:
+      resources:
+        requests:
+          cpu: 0.1
+          memory: 200Mi
     sqlite:
       enabled: true
       volume:
