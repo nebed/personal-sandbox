@@ -4,15 +4,15 @@ metadata:
   name: {{ .Release.Name }}-ingress
   labels:
   {{- include "langflow.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
+  {{- with .Values.langflowide.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  ingressClassName: {{ .Values.ingress.className | quote }}
-  {{- if .Values.ingress.tls }}
+  ingressClassName: {{ .Values.langflowide.ingress.className | quote }}
+  {{- if .Values.langflowide.ingress.tls }}
   tls:
-    {{- range .Values.ingress.tls }}
+    {{- range .Values.langflowide.ingress.tls }}
     - hosts:
         {{- range .hosts }}
         - {{ . | quote }}
@@ -21,7 +21,7 @@ spec:
     {{- end }}
   {{- end }}
   rules:
-    {{- range .Values.ingress.hosts }}
+    {{- range .Values.langflowide.ingress.hosts }}
     - host: {{ .host | quote }}
       http:
         paths:
