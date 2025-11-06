@@ -8,7 +8,7 @@ langflowide:
     hosts:
       - host: langflow.sandbox.nebed.io
         paths:
-        - type: ImplementationSpecific
+        - pathType: ImplementationSpecific
           path: /
   langflow:
     backend:
