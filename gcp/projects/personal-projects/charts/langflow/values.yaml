@@ -23,13 +23,13 @@ langflowide:
         repository: langflowai/langflow
         imagePullPolicy: IfNotPresent
         tag: 1.6.5
+      sqlite:
+        enabled: true
+        volume:
+          size: "1Gi"
+          existingStorageClassName: "standard"
     frontend:
       resources:
         requests:
           cpu: 0.1
           memory: 200Mi
-    sqlite:
-      enabled: true
-      volume:
-        size: "1Gi"
-        existingStorageClassName: "standard"
