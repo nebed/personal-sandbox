@@ -2,6 +2,7 @@ langflowide:
   nameOverride: langflow
   ingress:
     enabled: false
+    className: ingress-nginx-public
     annotations:
       nginx.ingress.kubernetes.io/backend-protocol: HTTP
       nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
