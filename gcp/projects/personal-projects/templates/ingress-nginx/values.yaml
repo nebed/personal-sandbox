@@ -16,6 +16,7 @@ controller:
     enabled: true
     timeoutSeconds: 30
   service:
+    externalTrafficPolicy: Local
     annotations:
       cloud.google.com/network-tier: "Standard"
     loadBalancerIP: ${load_balancer_ip}
