@@ -6,6 +6,7 @@ langflowide:
     annotations:
       nginx.ingress.kubernetes.io/backend-protocol: HTTP
       nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/whitelist-source-range: "173.32.120.109/32"
     hosts:
       - host: langflow.sandbox.nebed.io
         paths:
