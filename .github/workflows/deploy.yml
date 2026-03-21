@@ -1,0 +1,53 @@
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: 'read'
+  id-token: 'write'
+
+jobs:
+  terraform-ansible:
+    name: 'Terraform & Ansible'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./gcp/projects/personal-projects
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: 1.5.0
+
+    - name: Install Ansible
+      run: |
+        pip install ansible requests google-auth
+
+    - name: Terraform Init
+      run: terraform init
+
+    - name: Terraform Plan
+      run: terraform plan -input=false
+
+    - name: Terraform Apply
+      if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+      run: |
+        # Mask sensitive outputs if they appear in logs
+        # This is a precaution; proper sensitivity handling in TF is better
+        terraform apply -auto-approve -input=false
+      env:
+        ANSIBLE_HOST_KEY_CHECKING: 'False'
+        ANSIBLE_FORCE_COLOR: 'True'
