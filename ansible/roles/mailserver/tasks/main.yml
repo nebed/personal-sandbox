@@ -111,6 +111,30 @@
   with_items: 
     - "{{ domainlist }}"
 
+- name: Generate Certificates for websites
+  become: yes
+  shell: |
+    certbot certonly --standalone -d {{ item.domain }} -d www.{{ item.domain }} --non-interactive --agree-tos -m webmaster@{{ item.domain }} --expand
+  loop: "{{ website_domains }}"
+  ignore_errors: yes
+
+- name: Create Nginx config for websites
+  become: yes
+  template:
+    src: website.nginx.j2
+    dest: /etc/nginx/sites-available/{{ item.domain }}
+  loop: "{{ website_domains }}"
+  notify: Reload Nginx Service
+
+- name: Enable website configs
+  become: yes
+  file:
+    src: /etc/nginx/sites-available/{{ item.domain }}
+    dest: /etc/nginx/sites-enabled/{{ item.domain }}
+    state: link
+  loop: "{{ website_domains }}"
+  notify: Reload Nginx Service
+
 - name: Create Postfix SSL Map
   become: yes
   blockinfile:

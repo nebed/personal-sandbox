@@ -1,0 +1,39 @@
+server {
+    listen 80;
+    server_name {{ item.domain }} www.{{ item.domain }};
+    return 301 https://{{ item.domain }}$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name {{ item.domain }} www.{{ item.domain }};
+
+    ssl_certificate /etc/letsencrypt/live/{{ item.domain }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ item.domain }}/privkey.pem;
+    
+    # SSL Settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    location / {
+        # Rewrite root to index.html because we are proxying to the storage API
+        rewrite ^/$ /index.html break;
+        rewrite ^/([^/]+)/$ /$1/index.html break;
+
+        proxy_pass https://storage.googleapis.com/{{ item.bucket }}/;
+        proxy_set_header Host storage.googleapis.com;
+        proxy_set_header Connection "";
+        
+        # Hide GCS headers
+        proxy_hide_header x-goog-hash;
+        proxy_hide_header x-goog-generation;
+        proxy_hide_header x-goog-metageneration;
+        proxy_hide_header x-goog-stored-content-encoding;
+        proxy_hide_header x-goog-stored-content-length;
+        proxy_hide_header x-goog-storage-class;
+        proxy_hide_header x-guploader-uploadid;
+
+        proxy_intercept_errors on;
+        error_page 404 = /404.html;
+    }
+}
