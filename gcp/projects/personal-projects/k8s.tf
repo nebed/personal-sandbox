@@ -28,7 +28,7 @@ resource "google_container_cluster" "sandbox" {
 resource "google_container_node_pool" "bitcoin" {
   name_prefix = "bitcoin-"
   cluster    = google_container_cluster.sandbox.id
-  node_count = 1
+  node_count = 0
 
   management {
     auto_repair = true

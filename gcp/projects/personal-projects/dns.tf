@@ -65,8 +65,27 @@ locals {
       smtp_user_secret     = "mailgun-mail-strataware-io-smtp-user"
       smtp_password_secret = "mailgun-mail-strataware-io-smtp-password"
     }
-  }
 
+    cloudindigenes-com = {
+      name = "cloudindigenes.com."
+      cname = {
+        "email.mail." = "mailgun.org."
+      }
+      a = {
+        "mail." = google_compute_address.postbox.address
+      }
+      txt = {
+        "smtp._domainkey.mail." = "\"k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC/HanRofdZ5z0HB6r7H4Qb9Zelpti8wPIKvCFKMIMGFuH47DdjEsKjAaI7wed98s6GBz8TaX4zaktf4kqjNzx4NSmZ1qNlcglnjz4lzYUCiup01VzSKEe5Q/Lv+YGSt24kF+wrHe611At7th1k9KzmgmvHQeL3B1TXhOHp/uj1BwIDAQAB\""
+        "mail."                 = "\"v=spf1 include:mailgun.org ~all\""
+        "_dmarc."               = "\"v=DMARC1;\" \"p=none;\" \"rua=mailto:postmaster@cloudindigenes.com;\""
+      }
+      mx = {
+        "" = "0 mail.cloudindigenes.com."
+      }
+      smtp_user_secret     = "mailgun-mail-cloudindigenes-com-smtp-user"
+      smtp_password_secret = "mailgun-mail-cloudindigenes-com-smtp-password"
+    }
+  }
   mariadb_root_password_secret       = "postbox-mariadb-root-password"
   mariadb_postfix_password_secret    = "postbox-mariadb-postfix-password"
   postfixadmin_setup_password_secret = "postfixadmin-setup-password"
@@ -132,7 +151,7 @@ resource "google_dns_record_set" "cname" {
   type     = "CNAME"
   ttl      = 300
 
-  managed_zone = each.value.name
+  managed_zone = google_dns_managed_zone.dns[each.value.name].name
 
   rrdatas = [each.value.value]
 }
@@ -143,7 +162,7 @@ resource "google_dns_record_set" "txt" {
   type     = "TXT"
   ttl      = 300
 
-  managed_zone = each.value.name
+  managed_zone = google_dns_managed_zone.dns[each.value.name].name
 
   rrdatas = [each.value.value]
 }
@@ -154,7 +173,7 @@ resource "google_dns_record_set" "a" {
   type     = "A"
   ttl      = 300
 
-  managed_zone = each.value.name
+  managed_zone = google_dns_managed_zone.dns[each.value.name].name
 
   rrdatas = [each.value.value]
 }
@@ -165,7 +184,7 @@ resource "google_dns_record_set" "mx" {
   type     = "MX"
   ttl      = 300
 
-  managed_zone = each.value.name
+  managed_zone = google_dns_managed_zone.dns[each.value.name].name
 
   rrdatas = [each.value.value]
 }
