@@ -16,11 +16,17 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
 
     location / {
-        # Rewrite root to index.html because we are proxying to the storage API
-        rewrite ^/$ /index.html break;
-        rewrite ^/([^/]+)/$ /$1/index.html break;
+        # Rewrite rules to handle GCS path structure
+        # 1. Root -> index.html
+        rewrite ^/$ /{{ item.bucket }}/index.html break;
+        
+        # 2. Directories (trailing slash) -> index.html
+        rewrite ^/(.+)/$ /{{ item.bucket }}/$1/index.html break;
+        
+        # 3. Everything else -> Prepend bucket name
+        rewrite ^/(.*)$ /{{ item.bucket }}/$1 break;
 
-        proxy_pass https://storage.googleapis.com/{{ item.bucket }}/;
+        proxy_pass https://storage.googleapis.com;
         proxy_set_header Host storage.googleapis.com;
         proxy_set_header Connection "";
         
