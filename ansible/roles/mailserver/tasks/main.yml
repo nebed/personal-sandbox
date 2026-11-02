@@ -650,6 +650,12 @@
     dest: /var/www/html/postfixadmin
     state: link
 
+- name: Remove the publicly accessible PostfixAdmin setup script
+  become: true
+  ansible.builtin.file:
+    path: /opt/postfixadmin/public/setup.php
+    state: absent
+
 - name: Create postfixadmin setup hash
   ansible.builtin.command: php -r 'echo password_hash("{{ postfixadmin_setup_password }}", PASSWORD_DEFAULT);'
   register: php_hash_output
