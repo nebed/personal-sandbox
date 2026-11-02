@@ -477,8 +477,8 @@
     src: dovecot-2.4.conf.j2
     dest: /etc/dovecot/dovecot.conf
     owner: root
-    group: root
-    mode: '0600'
+    group: dovecot
+    mode: '0640'
   no_log: true
   notify: Restart Dovecot Service
 
@@ -701,10 +701,12 @@
   no_log: yes
 
 - name: Add user to dovecot group
+  become: true
   user:
     name: www-data
     groups: dovecot
     append: yes
+  notify: Restart PHP-FPM Service
 
 - name: Update nginx default site
   become: yes

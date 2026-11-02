@@ -12,6 +12,13 @@
     state: restarted
     enabled: yes
 
+- name: Restart PHP-FPM Service
+  become: yes
+  systemd:
+    name: "{{ php_fpm_socket | basename | regex_replace('\\.sock$', '') }}"
+    state: restarted
+    enabled: yes
+
 - name: Reload Nginx Service
   become: yes
   systemd:
