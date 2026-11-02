@@ -19,13 +19,6 @@
     state: reloaded
     enabled: yes
 
-- name: Restart Nginx Service
-  become: yes
-  systemd:
-    name: nginx
-    state: restarted
-    enabled: yes
-
 - name: Restart Redis Service
   become: yes
   systemd:

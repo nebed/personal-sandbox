@@ -31,9 +31,9 @@ provider "helm" {
 }
 
 provider "kubernetes" {
-    host                   = "https://${google_container_cluster.sandbox.endpoint}"
-    token                  = data.google_client_config.provider.access_token
-    cluster_ca_certificate = base64decode(google_container_cluster.sandbox.master_auth.0.cluster_ca_certificate)
+  host                   = "https://${google_container_cluster.sandbox.endpoint}"
+  token                  = data.google_client_config.provider.access_token
+  cluster_ca_certificate = base64decode(google_container_cluster.sandbox.master_auth.0.cluster_ca_certificate)
 }
 
 data "google_project" "current_project" {}

@@ -1,12 +1,12 @@
 locals {
   websites = {
     euroboros = {
-        domain = "euroborosconsulting.com"
-        bucket = "euroborosconsulting-com"
+      domain = "euroborosconsulting.com"
+      bucket = "euroborosconsulting-com"
     }
     nebed = {
-        domain = "nebed.io"
-        bucket = "nebed-io"
+      domain = "nebed.io"
+      bucket = "nebed-io"
     }
   }
 }

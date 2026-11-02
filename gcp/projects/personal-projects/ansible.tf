@@ -7,18 +7,29 @@ locals {
     mariadb_postfix_password    = data.google_secret_manager_secret_version.mariadb_postfix_password.secret_data
     postfixadmin_setup_password = data.google_secret_manager_secret_version.postfixadmin_setup_password.secret_data
     domainlist                  = local.domainlist
-    postfixadmin_version        = "3.3.13"
-    roundcube_version           = "1.6.1"
+    postfixadmin_version        = "3.3.16"
+    roundcube_version           = "1.6.20"
     roundcube_des_key           = data.google_secret_manager_secret_version.roundcube_des_key.secret_data
     website_domains             = [for k, v in local.websites : v]
+    smtp_credentials            = local.smtp_credentials
+    certificate_mode            = "auto"
+    postbox_data_device         = "/dev/disk/by-id/google-postbox-data"
+    postbox_data_mount          = "/mnt/data"
   }
 
   domainlist = [
     for item, value in local.domains : {
       name        = "@${trim(value.name, ".")}"
-      smtp_cred   = "${data.google_secret_manager_secret_version.smtp_user["${item}"].secret_data}:${data.google_secret_manager_secret_version.smtp_pass["${item}"].secret_data}"
       mail_domain = "mail.${trim(value.name, ".")}"
       webmaster   = "webmaster@${trim(value.name, ".")}"
+    }
+    if value.smtp_user_secret != null
+  ]
+
+  smtp_credentials = [
+    for item, value in local.domains : {
+      name      = "@${trim(value.name, ".")}"
+      smtp_cred = "${data.google_secret_manager_secret_version.smtp_user["${item}"].secret_data}:${data.google_secret_manager_secret_version.smtp_pass["${item}"].secret_data}"
     }
     if value.smtp_user_secret != null
   ]
@@ -29,24 +40,35 @@ locals {
 
 data "archive_file" "ansible_files" {
   type        = "zip"
-  source_dir = "../../../ansible"
+  source_dir  = "../../../ansible"
   output_path = "${abspath(path.root)}/.terraform/ansible.zip"
 }
 
 resource "null_resource" "ansible" {
+  depends_on = [
+    google_compute_instance.mailserver,
+    google_compute_firewall.ssh,
+    google_compute_firewall.ssh_deny_public,
+    google_compute_firewall.mail-postbox,
+    google_compute_firewall.http-postbox,
+  ]
 
   triggers = {
-    always_run = "${data.archive_file.ansible_files.output_sha256}${sha256(jsonencode(local.extra_vars))}"
+    instance_id = google_compute_instance.mailserver.instance_id
+    playbook    = data.archive_file.ansible_files.output_sha256
+    extra_vars  = sha256(jsonencode(local.extra_vars))
   }
 
+  # Output is hidden here because the env var holds secrets.
   provisioner "local-exec" {
     environment = {
       "TMP${self.id}" = jsonencode(local.extra_vars)
     }
 
-    command = "echo $TMP${self.id} > ${format(local.extra_vars_file, self.id)}"
+    command = "umask 077; printf '%s' \"$TMP${self.id}\" > ${format(local.extra_vars_file, self.id)}"
   }
 
+  # Streams Ansible output; secrets are kept out of it with no_log on tasks.
   provisioner "local-exec" {
     environment = {
       ANSIBLE_FORCE_COLOR                = "False"
@@ -56,15 +78,13 @@ resource "null_resource" "ansible" {
 
     command = <<-EOT
       extra_vars_file="${format(local.extra_vars_file, self.id)}"
-      inventory="${google_compute_address.postbox.address},"
-      ansible-playbook -v -c paramiko \
-        -i "$inventory" -e "@$extra_vars_file" \
+      trap 'rm -f "$extra_vars_file"' EXIT
+      ansible-playbook -c paramiko \
+        -i '${google_compute_address.postbox.address},' -e "@$extra_vars_file" \
         --ssh-extra-args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null' \
-        "${local.playbook_path}" &&\
-      rm -f $extra_vars_file
+        "${local.playbook_path}"
     EOT
   }
-
 }
 
 
