@@ -1,6 +1,19 @@
 ---
 - hosts: all
   become: true
+  gather_facts: false
+  environment:
+    # Supported by the Google Cloud CLI package's postinst on small VMs.
+    CLOUDSDK_SKIP_PY_COMPILATION: "1"
+  pre_tasks:
+    - name: Wait for the selected server to accept Ansible connections
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+      tags: always
+
+    - name: Gather facts after SSH is ready
+      ansible.builtin.setup:
+      tags: always
   roles:
     - role: mailserver
       vars:

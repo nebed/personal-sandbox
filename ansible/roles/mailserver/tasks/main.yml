@@ -1,7 +1,129 @@
-- name: Updating Apt Cache
+- name: Configure persistent data disk and service bind mounts
+  ansible.builtin.include_tasks: storage.yml
+
+# Fixed IDs keep ownership of the persistent data valid when the boot disk is rebuilt.
+- name: Create service groups with the IDs that own the persistent data
+  become: true
+  ansible.builtin.group:
+    name: "{{ item.name }}"
+    gid: "{{ item.id }}"
+    system: true
+  loop:
+    - { name: mysql, id: 108 }
+    - { name: redis, id: 109 }
+
+- name: Create service users with the IDs that own the persistent data
+  become: true
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    uid: "{{ item.uid }}"
+    group: "{{ item.name }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+    home: "{{ item.home }}"
+  loop:
+    - { name: mysql, uid: 104, home: /nonexistent }
+    - { name: redis, uid: 105, home: /var/lib/redis }
+
+- name: Create a 2 GiB swap file
+  become: true
+  ansible.builtin.command: fallocate -l 2G /swapfile
+  args:
+    creates: /swapfile
+
+- name: Restrict swap file permissions
+  become: true
+  ansible.builtin.file:
+    path: /swapfile
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Format the swap file when it has no swap signature
+  become: true
+  ansible.builtin.shell: blkid -p /swapfile >/dev/null 2>&1 || mkswap /swapfile
+  register: swapfile_format
+  changed_when: "'Setting up swapspace' in swapfile_format.stdout"
+
+- name: Persist the swap file in fstab
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^/swapfile\s'
+    line: /swapfile none swap sw 0 0
+
+- name: Check active swap
+  become: true
+  ansible.builtin.command: swapon --noheadings --show=NAME
+  register: active_swap
+  changed_when: false
+
+- name: Enable the swap file
+  become: true
+  ansible.builtin.command: swapon /swapfile
+  when: "'/swapfile' not in active_swap.stdout"
+
+- name: Use the archived security repository for Debian bullseye
+  become: true
+  when:
+    - ansible_distribution == 'Debian'
+    - ansible_distribution_release == 'bullseye'
+  block:
+    - name: Find traditional APT source files
+      ansible.builtin.find:
+        paths: /etc/apt
+        patterns:
+          - sources.list
+          - '*.list'
+        file_type: file
+        recurse: true
+      register: apt_source_files
+
+    - name: Redirect only bullseye security entries to Debian's archive
+      ansible.builtin.replace:
+        path: "{{ item.path }}"
+        regexp: '(?m)^([ \t]*deb(?:-src)?[ \t]+(?:\[[^\]\n]+\][ \t]+)?)https?://(?:security\.debian\.org|deb\.debian\.org)/debian-security/?([ \t]+bullseye-security(?:[ \t]+[^\n]*)?)$'
+        replace: '\1https://archive.debian.org/debian-security\2'
+        backup: true
+      loop: "{{ apt_source_files.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+- name: Check for incomplete package configuration
+  become: true
+  ansible.builtin.command: dpkg --audit
+  register: dpkg_audit
+  changed_when: false
+
+- name: Complete package configuration interrupted by a previous run
+  become: true
+  ansible.builtin.command:
+    argv:
+      - dpkg
+      - --force-confdef
+      - --force-confold
+      - --configure
+      - --pending
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: dpkg_audit.stdout | trim | length > 0
+
+- name: Verify package configuration is complete before upgrading
+  become: true
+  ansible.builtin.command: dpkg --audit
+  register: dpkg_audit_after
+  changed_when: false
+  failed_when: dpkg_audit_after.rc != 0 or (dpkg_audit_after.stdout | trim | length > 0)
+
+- name: Update installed packages from configured repositories
   become: yes
   apt:
     update_cache: yes
+    upgrade: dist
+    fail_on_autoremove: yes
+    dpkg_options: force-confdef,force-confold
+    lock_timeout: 300
 
 - name: "Configure Timezone"
   become: yes
@@ -29,9 +151,8 @@
     path: /etc/postfix/sasl_passwd
     create: yes
     line: "{{ item.name }}  {{ item.smtp_cred }}"
-  with_items: 
-    - "{{ domainlist }}"
-
+  loop: "{{ smtp_credentials }}"
+  no_log: yes
 
 - name: Replace relayhost in postfix config
   become: yes
@@ -50,6 +171,7 @@
       smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
       smtp_sasl_security_options = noanonymous
       smtp_sender_dependent_authentication = yes
+      smtp_tls_security_level = encrypt
       message_size_limit = 30720000
 
 - name: Create Postfix Hash map
@@ -71,13 +193,21 @@
   apt:
     update_cache: yes
 
+- name: Check whether this release provides the PHP IMAP extension package
+  become: true
+  ansible.builtin.command:
+    argv: [apt-cache, policy, php-imap]
+  register: php_imap_package_policy
+  changed_when: false
+
 - name: Install Required applications
   become: yes
   apt:
-    state: present
+    state: latest
     pkg:
       - acl
       - certbot
+      - linux-image-cloud-amd64
       - dovecot-core 
       - dovecot-imapd 
       - dovecot-lmtpd
@@ -85,7 +215,6 @@
       - dovecot-sieve
       - mariadb-server
       - nginx 
-      - php-imap 
       - php-mbstring
       - php-fpm
       - php-mysql
@@ -97,26 +226,165 @@
       - rspamd
       - wget
 
-- name: Stop Nginx Service
-  become: yes
-  systemd:
-    name: nginx
-    state: stopped
-    enabled: yes
+- name: Install PHP IMAP extension when available in this Debian release
+  become: true
+  ansible.builtin.apt:
+    name: php-imap
+    state: latest
+    lock_timeout: 300
+  when: "'Candidate: (none)' not in php_imap_package_policy.stdout"
 
-- name: Generate Certificates for domains
-  become: yes
-  shell: |
-          certbot certonly  --standalone -d {{ item.mail_domain }}  --non-interactive --agree-tos -m {{ item.webmaster }}
-  with_items: 
-    - "{{ domainlist }}"
+- name: Find the installed PHP-FPM socket dynamically
+  become: true
+  ansible.builtin.shell: |
+    find /run/php -maxdepth 1 -type s -name 'php*-fpm.sock' -print | sort -V | tail -n 1
+  args:
+    executable: /bin/bash
+  register: detected_php_fpm_socket
+  changed_when: false
 
-- name: Generate Certificates for websites
-  become: yes
-  shell: |
-    certbot certonly --standalone -d {{ item.domain }} -d www.{{ item.domain }} --non-interactive --agree-tos -m webmaster@{{ item.domain }} --expand
-  loop: "{{ website_domains }}"
-  ignore_errors: yes
+- name: Require an active-version PHP-FPM socket
+  ansible.builtin.assert:
+    that:
+      - detected_php_fpm_socket.stdout | trim | length > 0
+    fail_msg: "No PHP-FPM socket was found in /run/php after installing the role packages."
+
+- name: Set dynamic PHP-FPM socket path
+  ansible.builtin.set_fact:
+    php_fpm_socket_path: "{{ detected_php_fpm_socket.stdout | trim }}"
+
+- name: Detect the installed MariaDB client command
+  become: true
+  ansible.builtin.shell: command -v mariadb || command -v mysql
+  args:
+    executable: /bin/bash
+  register: detected_mariadb_client
+  changed_when: false
+
+- name: Set the installed MariaDB client command
+  ansible.builtin.set_fact:
+    mariadb_client_path: "{{ detected_mariadb_client.stdout | trim }}"
+
+- name: Select certificate provisioning mode
+  ansible.builtin.set_fact:
+    requested_mail_certificate_mode: "{{ certificate_mode | default('auto') }}"
+
+- name: Validate certificate provisioning mode
+  ansible.builtin.assert:
+    that:
+      - requested_mail_certificate_mode in ['auto', 'standalone', 'existing']
+    fail_msg: "certificate_mode must be auto, standalone or existing."
+
+- name: Inspect existing mail-domain certificates for automatic mode
+  become: true
+  ansible.builtin.stat:
+    follow: true
+    path: "/etc/letsencrypt/live/{{ item.0.mail_domain }}/{{ item.1 }}"
+  loop: "{{ domainlist | product(['fullchain.pem', 'privkey.pem']) | list }}"
+  loop_control:
+    label: "/etc/letsencrypt/live/{{ item.0.mail_domain }}/{{ item.1 }}"
+  register: existing_mail_certificate_files
+  when: requested_mail_certificate_mode == 'auto'
+
+- name: Use existing certificates when complete, otherwise issue them
+  ansible.builtin.set_fact:
+    mail_certificate_mode: >-
+      {{ 'existing' if (existing_mail_certificate_files.results
+      | selectattr('stat.exists') | selectattr('stat.isreg') | list | length)
+      == (domainlist | length * 2) else 'standalone' }}
+  when: requested_mail_certificate_mode == 'auto'
+
+- name: Use explicitly configured certificate mode
+  ansible.builtin.set_fact:
+    mail_certificate_mode: "{{ requested_mail_certificate_mode }}"
+  when: requested_mail_certificate_mode != 'auto'
+
+- name: Obtain certificates using standalone HTTP validation
+  become: true
+  when: mail_certificate_mode == 'standalone'
+  block:
+    - name: Stop Nginx before standalone certificate issuance
+      ansible.builtin.systemd:
+        name: nginx
+        state: stopped
+        enabled: true
+
+    - name: Generate certificates for mail domains
+      ansible.builtin.shell: |
+        certbot certonly --standalone -d {{ item.mail_domain }} --non-interactive --agree-tos -m {{ item.webmaster }}
+      loop: "{{ domainlist }}"
+
+    - name: Generate certificates for configured websites
+      ansible.builtin.shell: |
+        certbot certonly --standalone -d {{ item.domain }} -d www.{{ item.domain }} --non-interactive --agree-tos -m webmaster@{{ item.domain }} --expand
+      loop: "{{ website_domains }}"
+      ignore_errors: true
+  always:
+    - name: Ensure Nginx is running after standalone certificate issuance
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: true
+
+- name: Check the default mail certificate and private key
+  become: true
+  ansible.builtin.stat:
+    follow: true
+    path: "{{ item }}"
+  loop:
+    - "/etc/letsencrypt/live/{{ main_hostname }}/fullchain.pem"
+    - "/etc/letsencrypt/live/{{ main_hostname }}/privkey.pem"
+  register: main_certificate_stats
+
+- name: Require the default mail certificate files
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+    fail_msg: "Missing expected certificate or private key: {{ item.item }}"
+  loop: "{{ main_certificate_stats.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Check mail-domain certificates and private keys
+  become: true
+  ansible.builtin.stat:
+    follow: true
+    path: "/etc/letsencrypt/live/{{ item.0.mail_domain }}/{{ item.1 }}"
+  loop: "{{ domainlist | product(['fullchain.pem', 'privkey.pem']) | list }}"
+  loop_control:
+    label: "/etc/letsencrypt/live/{{ item.0.mail_domain }}/{{ item.1 }}"
+  register: mail_certificate_stats
+
+- name: Require mail-domain certificate files
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+    fail_msg: "Missing expected certificate or private key for {{ item.item.0.mail_domain }}."
+  loop: "{{ mail_certificate_stats.results }}"
+  loop_control:
+    label: "{{ item.item.0.mail_domain }}/{{ item.item.1 }}"
+
+- name: Check website certificates and private keys
+  become: true
+  ansible.builtin.stat:
+    follow: true
+    path: "/etc/letsencrypt/live/{{ item.0.domain }}/{{ item.1 }}"
+  loop: "{{ website_domains | product(['fullchain.pem', 'privkey.pem']) | list }}"
+  loop_control:
+    label: "/etc/letsencrypt/live/{{ item.0.domain }}/{{ item.1 }}"
+  register: website_certificate_stats
+
+- name: Require website certificate files
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+    fail_msg: "Missing expected certificate or private key for website {{ item.item.0.domain }}."
+  loop: "{{ website_certificate_stats.results }}"
+  loop_control:
+    label: "{{ item.item.0.domain }}/{{ item.item.1 }}"
 
 - name: Create Nginx config for websites
   become: yes
@@ -144,30 +412,6 @@
       {{ item.mail_domain }}
           /etc/letsencrypt/live/{{ item.mail_domain }}/privkey.pem
           /etc/letsencrypt/live/{{ item.mail_domain }}/fullchain.pem
-    marker: "# {mark} ANSIBLE MANAGED BLOCK {{ item.mail_domain }}"
-  with_items: 
-    - "{{ domainlist }}"
-
-- name: Replace relayhost in postfix config
-  become: yes
-  lineinfile:
-    path: /etc/dovecot/conf.d/10-ssl.conf
-    regexp: "^{{ item.old }}"
-    line: "{{ item.new }}"
-  loop:
-    - { old: ssl_cert = </etc/dovecot/private/dovecot.pem, new: "ssl_cert = </etc/letsencrypt/live/{{ main_hostname }}/fullchain.pem" }
-    - { old: ssl_key = </etc/dovecot/private/dovecot.key, new: "ssl_key = </etc/letsencrypt/live/{{ main_hostname }}/privkey.pem"  }
-
-- name: Update SSL config Dovecot
-  become: yes
-  blockinfile:
-    create: yes
-    path: /etc/dovecot/conf.d/10-ssl.conf
-    block: |
-      local_name {{ item.mail_domain }} {
-        ssl_cert = </etc/letsencrypt/live/{{ item.mail_domain }}/fullchain.pem
-        ssl_key = </etc/letsencrypt/live/{{ item.mail_domain }}/privkey.pem
-      }
     marker: "# {mark} ANSIBLE MANAGED BLOCK {{ item.mail_domain }}"
   with_items: 
     - "{{ domainlist }}"
@@ -205,10 +449,10 @@
        -o smtpd_sasl_auth_enable=yes
        -o smtpd_tls_auth_only=yes
        -o smtpd_reject_unlisted_recipient=no
-       -o smtpd_client_restrictions=$mua_client_restrictions
-       -o smtpd_helo_restrictions=$mua_helo_restrictions
-       -o smtpd_sender_restrictions=$mua_sender_restrictions
-       -o smtpd_recipient_restrictions=
+        -o smtpd_client_restrictions=permit
+        -o smtpd_helo_restrictions=permit
+        -o smtpd_sender_restrictions=permit
+        -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject
        -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
        -o smtpd_sasl_type=dovecot
        -o smtpd_sasl_path=private/auth
@@ -218,110 +462,101 @@
        -o smtpd_tls_wrappermode=yes
        -o smtpd_sasl_auth_enable=yes
        -o smtpd_reject_unlisted_recipient=no
-       -o smtpd_client_restrictions=$mua_client_restrictions
-       -o smtpd_helo_restrictions=$mua_helo_restrictions
-       -o smtpd_sender_restrictions=$mua_sender_restrictions
-       -o smtpd_recipient_restrictions=
+        -o smtpd_client_restrictions=permit
+        -o smtpd_helo_restrictions=permit
+        -o smtpd_sender_restrictions=permit
+        -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject
        -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
        -o smtpd_sasl_type=dovecot
        -o smtpd_sasl_path=private/auth
        -o milter_macro_daemon_name=ORIGINATING
 
-- name: Update Certbot config for autorenew Certificate
-  become: yes
-  blockinfile:
-    create: yes
-    path: /etc/letsencrypt/renewal-hooks/deploy/mail-permissions
-    mode: 0755
-    block: |
+- name: Ensure Certbot renewal hook directories exist
+  become: true
+  ansible.builtin.file:
+    path: "/etc/letsencrypt/renewal-hooks/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop: [pre, post, deploy]
+
+- name: Stop Nginx before standalone Certbot renewal attempts
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/letsencrypt/renewal-hooks/pre/stop-nginx
+    owner: root
+    group: root
+    mode: '0755'
+    content: |
       #!/bin/sh
+      set -eu
+      systemctl stop nginx
+
+- name: Restart Nginx after standalone Certbot renewal attempts
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/letsencrypt/renewal-hooks/post/start-nginx
+    owner: root
+    group: root
+    mode: '0755'
+    content: |
+      #!/bin/sh
+      set -eu
+      systemctl start nginx
+
+- name: Reload mail and web services after certificate renewal
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/letsencrypt/renewal-hooks/deploy/mail-services
+    owner: root
+    group: root
+    mode: '0755'
+    content: |
+      #!/bin/sh
+      set -eu
       setfacl -R -m u:www-data:rx /etc/letsencrypt/live/ /etc/letsencrypt/archive/
       postmap -F hash:/etc/postfix/ssl_map
-      service dovecot restart
-      service postfix restart
+      systemctl start nginx
+      systemctl reload nginx
+      systemctl restart postfix
+      systemctl restart dovecot
 
-- name: "Send Dovecot master conf"
-  become: yes
-  copy:
-    src: files/dovecot/10-master.conf
-    dest: /etc/dovecot/conf.d/10-master.conf
+- name: Enable automatic Certbot renewal timer
+  become: true
+  ansible.builtin.systemd:
+    name: certbot.timer
+    enabled: true
+    state: started
 
-- name: "Send Dovecot mailboxes conf"
-  become: yes
-  copy:
-    src: files/dovecot/15-mailboxes.conf
-    dest: /etc/dovecot/conf.d/15-mailboxes.conf
+- name: Install Dovecot 2.4 configuration
+  become: true
+  ansible.builtin.template:
+    src: dovecot-2.4.conf.j2
+    dest: /etc/dovecot/dovecot.conf
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  notify: Restart Dovecot Service
 
-
-- name: Replace mail_location in dovecot
-  become: yes
-  lineinfile:
-    path: /etc/dovecot/conf.d/10-mail.conf
-    regexp: '^mail_location'
-    line: mail_location = maildir:~/Maildir
-
-- name: Add mail_home in dovecot
-  become: yes
-  lineinfile:
-    path: /etc/dovecot/conf.d/10-mail.conf
-    line: mail_home = /var/vmail/%d/%n
-
-- name: Disable plaintext auth in dovecot
-  become: yes
-  lineinfile:
-    path: /etc/dovecot/conf.d/10-auth.conf
-    regexp: '^#disable_plaintext_auth'
-    line: disable_plaintext_auth = yes
-
-- name: Disable system auth in dovecot
-  become: yes
-  lineinfile:
-    path: /etc/dovecot/conf.d/10-auth.conf
-    regexp: '^!include auth-system.conf.ext'
-    line: "#!include auth-system.conf.ext"
-
-- name: Enable sql auth in dovecot
-  become: yes
-  lineinfile:
-    path: /etc/dovecot/conf.d/10-auth.conf
-    regexp: '^#!include auth-sql.conf.ext'
-    line: "!include auth-sql.conf.ext"
-
-- name: set SSL min protocol in dovecot
-  become: yes
-  lineinfile:
-    path: /etc/dovecot/conf.d/10-auth.conf
-    regexp: '^#ssl_min_protocol'
-    line: ssl_min_protocol = TLSv1.2
-
-- name: ssl_prefer_server_ciphers in dovecot
-  become: yes
-  lineinfile:
-    path: /etc/dovecot/conf.d/10-auth.conf
-    regexp: '^#ssl_prefer_server_ciphers'
-    line: ssl_prefer_server_ciphers = yes
-
-- name: configure sieve in dovecot
-  become: yes
-  lineinfile:
-    path: /etc/dovecot/conf.d/20-lmtp.conf
-    regexp: '^\s*#mail_plugins'
-    line: mail_plugins = $mail_plugins sieve
-
-- name: configure dovecot imap for sieve
-  become: yes
-  lineinfile:
-    path: /etc/dovecot/conf.d/20-imap.conf
-    regexp: '^\s*#mail_plugins'
-    line: "   mail_plugins = $mail_plugins imap_sieve"
+- name: Validate Dovecot configuration
+  become: true
+  ansible.builtin.command: doveconf -n
+  changed_when: false
+  no_log: true
 
 - name: Configure MariaDB database
   become: yes
-  run_once: true
   shell: |
     #!/bin/bash
-    mysql --user root <<EOF
-    UPDATE mysql.global_priv SET priv=json_set(priv, '$.plugin', 'mysql_native_password', '$.authentication_string', PASSWORD('{{ mariadb_root_password }}')) WHERE User='root';
+    set -euo pipefail
+    db_args=(--user=root)
+    if ! "{{ mariadb_client_path }}" --user=root --batch --skip-column-names -e 'SELECT 1' >/dev/null 2>&1; then
+      db_args+=(--password='{{ mariadb_root_password }}')
+    fi
+    "{{ mariadb_client_path }}" "${db_args[@]}" <<'SQL'
+    ALTER USER 'root'@'localhost' IDENTIFIED VIA unix_socket;
     DELETE FROM mysql.global_priv WHERE User='';
     DELETE FROM mysql.global_priv WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
     DROP DATABASE IF EXISTS test;
@@ -333,7 +568,10 @@
     CREATE OR REPLACE USER 'roundcube'@'%' IDENTIFIED BY '{{ mariadb_postfix_password }}';
     GRANT ALL PRIVILEGES ON roundcube.* TO roundcube@'%';
     FLUSH PRIVILEGES;
-    EOF
+    SQL
+  args:
+    executable: /bin/bash
+  no_log: yes
 
 - name: Remove roundcube directory
   become: yes
@@ -362,7 +600,7 @@
   become: yes
   shell: |
     chown -R www-data:www-data /opt/roundcube/temp/ /opt/roundcube/logs/
-    mysql roundcube < /opt/roundcube/SQL/mysql.initial.sql --force
+    "{{ mariadb_client_path }}" roundcube < /opt/roundcube/SQL/mysql.initial.sql --force
 
 - name: Add roundcube config
   become: yes
@@ -378,6 +616,17 @@
       $config['des_key'] = '{{ roundcube_des_key }}';
       $config['product_name'] = 'Nebed Postbox';
       $config['plugins'] = ['acl', 'additional_message_headers', 'archive', 'attachment_reminder', 'emoticons'];
+  no_log: yes
+
+- name: Update Roundcube database schema for the configured release
+  become: yes
+  command:
+    argv:
+      - php
+      - /opt/roundcube/bin/update.sh
+      - "--version={{ roundcube_version }}"
+      - -y
+  no_log: yes
 
 - name: Remove roundcube installer
   become: yes
@@ -419,18 +668,23 @@
     state: link
 
 - name: Create postfixadmin setup hash
-  command: php -r 'echo password_hash("{{ postfixadmin_setup_password }}", PASSWORD_DEFAULT);'
+  ansible.builtin.command: php -r 'echo password_hash("{{ postfixadmin_setup_password }}", PASSWORD_DEFAULT);'
   register: php_hash_output
+  no_log: true
 
 - name: Set variable with hash
-  set_fact:
+  ansible.builtin.set_fact:
     postfixadmin_setup_hash: "{{ php_hash_output.stdout }}"
+  no_log: true
 
 - name: Create Postfixadmin Config
   become: yes
   blockinfile:
     path: /opt/postfixadmin/config.local.php
     create: yes
+    owner: root
+    group: www-data
+    mode: '0640'
     marker: "<!-- {mark} ANSIBLE MANAGED BLOCK -->"
     block: |
       <?php
@@ -443,6 +697,7 @@
         $CONF['configured'] = true;
         $CONF['setup_password'] = '{{ postfixadmin_setup_hash }}';
       ?>
+  no_log: true
 
 - name: Create a postfixadmin directory
   become: yes
@@ -451,6 +706,16 @@
     state: directory
     owner: www-data
     group: www-data
+
+- name: Update PostfixAdmin database schema for the configured release
+  become: yes
+  command:
+    argv:
+      - php
+      - -r
+      - "define('POSTFIXADMIN_CLI', 1); require 'upgrade.php';"
+    chdir: /opt/postfixadmin/public
+  no_log: yes
 
 - name: Add user to dovecot group
   user:
@@ -506,7 +771,7 @@
                     include snippets/fastcgi-php.conf;
               
                     # With php-fpm (or other unix sockets):
-                    fastcgi_pass unix:/run/php/php7.4-fpm.sock;
+                    fastcgi_pass unix:{{ php_fpm_socket_path }};
                     # With php-cgi (or other tcp sockets):
                     # fastcgi_pass 127.0.0.1:9000;
               }
@@ -566,6 +831,7 @@
       hosts = 127.0.0.1
       dbname = postfix
       query = SELECT domain FROM domain WHERE domain='%s' AND active = '1'
+  no_log: yes
 
 - name: Update postfix virtual mailbox maps config
   become: yes
@@ -578,6 +844,7 @@
       hosts = 127.0.0.1
       dbname = postfix
       query = SELECT maildir FROM mailbox WHERE username='%s' AND active = '1'
+  no_log: yes
 
 - name: Update postfix virtual alias domain mailbox maps config
   become: yes
@@ -590,6 +857,7 @@
       hosts = 127.0.0.1
       dbname = postfix
       query = SELECT maildir FROM mailbox,alias_domain WHERE alias_domain.alias_domain = '%d' and mailbox.username = CONCAT('%u', '@', alias_domain.target_domain) AND mailbox.active = 1 AND alias_domain.active='1'
+  no_log: yes
 
 - name: Update postfix virtual alias maps config
   become: yes
@@ -602,6 +870,7 @@
       hosts = 127.0.0.1
       dbname = postfix
       query = SELECT goto FROM alias WHERE address='%s' AND active = '1'
+  no_log: yes
 
 - name: Update postfix virtual alias domain maps config
   become: yes
@@ -614,6 +883,7 @@
       hosts = 127.0.0.1
       dbname = postfix
       query = SELECT goto FROM alias,alias_domain WHERE alias_domain.alias_domain = '%d' and alias.address = CONCAT('%u', '@', alias_domain.target_domain) AND alias.active = 1 AND alias_domain.active='1'
+  no_log: yes
 
 - name: Update postfix virtual alias domain catchall config
   become: yes
@@ -626,18 +896,7 @@
       hosts = 127.0.0.1
       dbname = postfix
       query = SELECT goto FROM alias,alias_domain WHERE alias_domain.alias_domain = '%d' and alias.address = CONCAT('@', alias_domain.target_domain) AND alias.active = 1 AND alias_domain.active='1'
-
-- name: Update dovecot sql auth file
-  become: yes
-  blockinfile:
-    path: /etc/dovecot/dovecot-sql.conf.ext
-    block: |
-      driver = mysql
-      connect = host=127.0.0.1 dbname=postfix user=postfix password={{ mariadb_postfix_password }}
-      default_pass_scheme = SHA512
-      password_query = SELECT username AS user,password FROM mailbox WHERE username = '%u' AND active='1'
-      user_query = SELECT maildir, 2000 AS uid, 2000 AS gid FROM mailbox WHERE username = '%u' AND active='1'
-      iterate_query = SELECT username AS user FROM mailbox
+  no_log: yes
 
 - name: Update Redis config
   become: yes
@@ -732,34 +991,16 @@
     - {name: spam}
 
 - name: Make Sieve script executable
-  become: yes
-  shell: |
-     chmod u=rwx,go= /etc/dovecot/sieve/learn-spam.sh
-     chmod u=rwx,go= /etc/dovecot/sieve/learn-ham.sh
-
-- name: Add plugin sieve config to dovecot
-  become: yes
-  blockinfile:
-    path: /etc/dovecot/conf.d/90-sieve.conf
-    marker_begin: "plugin {"
-    marker_end: "}"
-    marker: "{mark}"
-    state: present
-    block: |
-      sieve = file:~/sieve;active=~/.dovecot.sieve
-      # Move to Junk folder
-      sieve_after = /etc/dovecot/sieve/move-spam-to-junk.sieve
-      sieve_plugins = sieve_imapsieve sieve_extprograms
-      imapsieve_mailbox1_name = Junk
-      imapsieve_mailbox1_causes = COPY FLAG
-      imapsieve_mailbox1_before = file:/etc/dovecot/sieve/report-spam.sieve
-      # Move from Junk folder
-      imapsieve_mailbox2_name = *
-      imapsieve_mailbox2_from = Junk
-      imapsieve_mailbox2_causes = COPY
-      imapsieve_mailbox2_before = file:/etc/dovecot/sieve/report-ham.sieve
-      sieve_pipe_bin_dir = /etc/dovecot/sieve
-      sieve_global_extensions = +vnd.dovecot.pipe
+  become: true
+  ansible.builtin.file:
+    path: "/etc/dovecot/sieve/learn-{{ item }}.sh"
+    owner: root
+    group: root
+    mode: '0755'
+    state: file
+  loop:
+    - spam
+    - ham
 
 - name: Make postfix sql executable
   become: yes
@@ -771,6 +1012,7 @@
   group:
     name: vmail
     state: present
+    gid: 2000
 
 - name: Add user vmail
   become: yes
@@ -797,3 +1039,5 @@
   shell: |
     sievec /etc/dovecot/sieve/move-spam-to-junk.sieve && sievec /etc/dovecot/sieve/report-spam.sieve && sievec /etc/dovecot/sieve/report-ham.sieve
 
+# Wedding-site assets are deployed by their own workflow, not this mail role.
+# End of mailserver tasks.

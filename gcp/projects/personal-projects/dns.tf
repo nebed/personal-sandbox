@@ -6,14 +6,15 @@ locals {
         "blog."         = "hashnode.network."
         "gt2btfmznwgo." = "gv-xhpxkf75yaju43.dv.googlehosted.com."
         "email.mail."   = "mailgun.org."
-        "orbyanduche."  = "mail.nebed.io."
-        "*.sandbox."           = "sandbox.nebed.io."
+        "orbyanduche."  = "postbox-web.nebed.io."
+        "*.sandbox."    = "sandbox.nebed.io."
       }
       a = {
-        "mail." = google_compute_address.postbox.address
-        "sandbox." = google_compute_address.k8s_sandbox_ingress.address
-        ""         = google_compute_address.postbox.address
-        "www."     = google_compute_address.postbox.address
+        "postbox-web." = google_compute_address.postbox.address
+        "mail."        = google_compute_address.postbox.address
+        "sandbox."     = google_compute_address.k8s_sandbox_ingress.address
+        ""             = google_compute_address.postbox.address
+        "www."         = google_compute_address.postbox.address
       }
       txt = {
         "mailo._domainkey.mail." = "\"k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDBSXGtyNG/OXdOiMKKdRvf4ROo51lfr9p5qhkNbnXZGxy4QpZ3P3YnMYJLx/dRUiMyjOR9jtuZHeAeO4aQZtixO4dZBNx4oCt+5ceKX9RF1qaaBPaDwFRse5mZ4qr7fY54VphrmZlgmtHWW9FtKWv2VOuojo3kxXQgdYcK4Eh4VQIDAQAB\""

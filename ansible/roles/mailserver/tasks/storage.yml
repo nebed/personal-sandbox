@@ -1,0 +1,106 @@
+---
+- name: Install filesystem utilities for the persistent data disk
+  ansible.builtin.apt:
+    name: e2fsprogs
+    state: present
+    lock_timeout: 300
+
+- name: Inspect the persistent data disk filesystem
+  ansible.builtin.command:
+    argv: [lsblk, --noheadings, --output, FSTYPE, "{{ postbox_data_device }}"]
+  register: postbox_data_filesystem
+  changed_when: false
+
+- name: Refuse to format an unexpected existing filesystem
+  ansible.builtin.assert:
+    that:
+      - postbox_data_filesystem.stdout | trim in ['', 'ext4']
+    fail_msg: "Unexpected filesystem on {{ postbox_data_device }}. Inspect it manually; formatting is not permitted."
+
+- name: Format the data disk only when it has no filesystem
+  ansible.builtin.command:
+    argv: [mkfs.ext4, "{{ postbox_data_device }}"]
+  when: postbox_data_filesystem.stdout | trim == ''
+
+- name: Read the persistent disk filesystem UUID
+  ansible.builtin.command:
+    argv: [blkid, -s, UUID, -o, value, "{{ postbox_data_device }}"]
+  register: postbox_data_uuid
+  changed_when: false
+
+- name: Require a filesystem UUID for the persistent data disk
+  ansible.builtin.assert:
+    that:
+      - postbox_data_uuid.stdout | trim | length > 0
+    fail_msg: "No filesystem UUID found on {{ postbox_data_device }}."
+
+- name: Create the persistent disk mount point
+  ansible.builtin.file:
+    path: "{{ postbox_data_mount }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Persist the data disk mount by filesystem UUID
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: "^[^#]+[ \\t]+{{ postbox_data_mount }}[ \\t]+"
+    line: "UUID={{ postbox_data_uuid.stdout | trim }} {{ postbox_data_mount }} ext4 defaults 0 2"
+    backup: true
+
+- name: Check whether the persistent disk is mounted
+  ansible.builtin.command:
+    argv: [mountpoint, -q, "{{ postbox_data_mount }}"]
+  register: postbox_data_mounted
+  changed_when: false
+  failed_when: postbox_data_mounted.rc not in [0, 1, 32]
+
+- name: Mount the persistent data disk
+  ansible.builtin.command:
+    argv: [mount, "{{ postbox_data_mount }}"]
+  when: postbox_data_mounted.rc != 0
+
+- name: Verify the mounted disk matches its configured device
+  ansible.builtin.command:
+    argv: [findmnt, --noheadings, --output, UUID, --mountpoint, "{{ postbox_data_mount }}"]
+  register: postbox_mounted_data_uuid
+  changed_when: false
+  failed_when: postbox_mounted_data_uuid.rc != 0 or (postbox_mounted_data_uuid.stdout | trim) != (postbox_data_uuid.stdout | trim)
+
+- name: Define persistent service paths
+  ansible.builtin.set_fact:
+    postbox_data_paths:
+      - { name: mail, target: /var/vmail }
+      - { name: mysql, target: /var/lib/mysql }
+      - { name: redis, target: /var/lib/redis }
+      - { name: letsencrypt, target: /etc/letsencrypt }
+      - { name: qrcodes, target: /opt/qrcodes }
+      - { name: orbyanduche/instance, target: /opt/orbyanduche/instance }
+
+- name: Prepare persistent service paths without hiding existing data
+  ansible.builtin.include_tasks: storage-path.yml
+  loop: "{{ postbox_data_paths }}"
+  loop_control:
+    loop_var: data_path
+    label: "{{ data_path.target }}"
+
+- name: Create systemd service drop-in directories for persistent storage
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.service.d"
+    state: directory
+    mode: '0755'
+  loop: [mariadb, redis-server, dovecot, postfix, nginx]
+
+- name: Require persistent mounts before starting data services
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item }}.service.d/data-mounts.conf"
+    mode: '0644'
+    content: |
+      [Unit]
+      RequiresMountsFor={{ postbox_data_mount }} /var/vmail /var/lib/mysql /var/lib/redis /etc/letsencrypt
+  loop: [mariadb, redis-server, dovecot, postfix, nginx]
+
+- name: Reload systemd after defining persistent mount dependencies
+  ansible.builtin.systemd:
+    daemon_reload: true

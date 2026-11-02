@@ -1,25 +1,25 @@
 locals {
-    cert_manager = {
-        name    = "cert-manager"
-        namespace = "cert-manager"
-        version = "v1.17.1"
-        chart   = "cert-manager"
-        repo    = "https://charts.jetstack.io"
-    }
-    nginx = {
-        name    = "ingress-nginx-public"
-        namespace = "ingress-nginx-public"
-        version = "4.2.1"
-        chart   = "ingress-nginx"
-        repo    = "https://kubernetes.github.io/ingress-nginx"
-    }
-    argocd = {
-        name    = "argocd"
-        namespace = "argocd"
-        version = "7.6.8"
-        chart   = "argo-cd"
-        repo    = "https://argoproj.github.io/argo-helm"
-    }
+  cert_manager = {
+    name      = "cert-manager"
+    namespace = "cert-manager"
+    version   = "v1.17.1"
+    chart     = "cert-manager"
+    repo      = "https://charts.jetstack.io"
+  }
+  nginx = {
+    name      = "ingress-nginx-public"
+    namespace = "ingress-nginx-public"
+    version   = "4.2.1"
+    chart     = "ingress-nginx"
+    repo      = "https://kubernetes.github.io/ingress-nginx"
+  }
+  argocd = {
+    name      = "argocd"
+    namespace = "argocd"
+    version   = "7.6.8"
+    chart     = "argo-cd"
+    repo      = "https://argoproj.github.io/argo-helm"
+  }
 }
 
 # Configure IAM binding to allow cert-manager's serviceaccount to manage DNS records in GCP
@@ -53,7 +53,7 @@ resource "helm_release" "cert_manager" {
 
 resource "kubernetes_manifest" "letsencrypt_clouddns_clusterissuer" {
 
-  manifest =  yamldecode(templatefile(
+  manifest = yamldecode(templatefile(
     "${path.module}/templates/cert-manager/manifests/gcpissuer.yaml", {
       kind        = "ClusterIssuer"
       server      = "https://acme-v02.api.letsencrypt.org/directory"
@@ -63,15 +63,15 @@ resource "kubernetes_manifest" "letsencrypt_clouddns_clusterissuer" {
       secret_name = "letsencrypt-clouddns-issuer-account-key"
   }))
 
-  depends_on = [ helm_release.cert_manager ]
+  depends_on = [helm_release.cert_manager]
 }
 
 resource "kubernetes_manifest" "public_nebed_io_cert" {
 
   manifest = yamldecode(templatefile("${path.module}/templates/cert-manager/manifests/wildcard-cert.yaml", {
-    domain = "sandbox.nebed.io"
-    issuer = "clouddns-clusterissuer"
-    name   = "default-public-ingress-tls"
+    domain    = "sandbox.nebed.io"
+    issuer    = "clouddns-clusterissuer"
+    name      = "default-public-ingress-tls"
     namespace = "ingress-nginx-public"
   }))
 
@@ -93,14 +93,14 @@ resource "helm_release" "nginx_ingress_public" {
 
   values = [
     templatefile("${path.module}/templates/ingress-nginx/values.yaml", {
-      class_resource_name          = local.nginx.name
-      controller_value             = "k8s.io/${local.nginx.name}"
-      load_balancer_ip             = google_compute_address.k8s_sandbox_ingress.address
-      default_tls_certificate      = "${local.nginx.namespace}/default-public-ingress-tls"
+      class_resource_name     = local.nginx.name
+      controller_value        = "k8s.io/${local.nginx.name}"
+      load_balancer_ip        = google_compute_address.k8s_sandbox_ingress.address
+      default_tls_certificate = "${local.nginx.namespace}/default-public-ingress-tls"
     }),
   ]
 
-    depends_on = [kubernetes_manifest.public_nebed_io_cert]   
+  depends_on = [kubernetes_manifest.public_nebed_io_cert]
 }
 
 resource "helm_release" "argocd" {
@@ -119,10 +119,10 @@ resource "helm_release" "argocd" {
 }
 
 resource "helm_release" "root-registry-provisioner" {
-  name             = "root-registry-provisioner"
-  namespace        = local.argocd.namespace
-  repository       = "${path.module}/charts"
-  chart            = "root-registry-provisioner"
+  name              = "root-registry-provisioner"
+  namespace         = local.argocd.namespace
+  repository        = "${path.module}/charts"
+  chart             = "root-registry-provisioner"
   dependency_update = true
 
   values = [
@@ -158,10 +158,10 @@ data "google_secret_manager_secret_version" "argocd_repo_git_private_key" {
 resource "kubernetes_secret" "argocd_dex_secret" {
 
   metadata {
-    name = "argocd-dex"
+    name      = "argocd-dex"
     namespace = "argocd"
     labels = {
-       "app.kubernetes.io/part-of" = "argocd"
+      "app.kubernetes.io/part-of" = "argocd"
     }
   }
 
@@ -174,19 +174,19 @@ resource "kubernetes_secret" "argocd_dex_secret" {
 
 resource "kubernetes_secret" "argocd_git_secret" {
   metadata {
-    name = "argocd-repo-secret-github-com"
+    name      = "argocd-repo-secret-github-com"
     namespace = "argocd"
     labels = {
-       "argocd.argoproj.io/secret-type" = "repo-creds"
+      "argocd.argoproj.io/secret-type" = "repo-creds"
     }
   }
 
   data = {
-    type = "git"
-    url = "https://github.com/nebed/"
-    githubAppID = data.google_secret_manager_secret_version.argocd_repo_git_app_id.secret_data
+    type                    = "git"
+    url                     = "https://github.com/nebed/"
+    githubAppID             = data.google_secret_manager_secret_version.argocd_repo_git_app_id.secret_data
     githubAppInstallationID = data.google_secret_manager_secret_version.argocd_repo_git_app_installation_id.secret_data
-    githubAppPrivateKey = data.google_secret_manager_secret_version.argocd_repo_git_private_key.secret_data
+    githubAppPrivateKey     = data.google_secret_manager_secret_version.argocd_repo_git_private_key.secret_data
   }
 
   depends_on = [helm_release.argocd]

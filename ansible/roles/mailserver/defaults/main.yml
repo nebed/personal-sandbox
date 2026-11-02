@@ -1,0 +1,3 @@
+---
+postbox_data_device: /dev/disk/by-id/google-postbox-data
+postbox_data_mount: /mnt/data

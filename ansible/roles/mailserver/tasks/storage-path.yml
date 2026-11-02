@@ -1,0 +1,60 @@
+---
+- name: Create the persistent source directory
+  ansible.builtin.file:
+    path: "{{ postbox_data_mount }}/{{ data_path.name }}"
+    state: directory
+    mode: '0750'
+
+- name: Create the normal service directory
+  ansible.builtin.file:
+    path: "{{ data_path.target }}"
+    state: directory
+
+- name: Inspect the existing service-path mount
+  ansible.builtin.command:
+    argv: [mountpoint, -q, "{{ data_path.target }}"]
+  register: data_path_mounted
+  changed_when: false
+  failed_when: data_path_mounted.rc not in [0, 1, 32]
+
+- name: Check for existing data before overlaying the service path
+  ansible.builtin.find:
+    paths: "{{ data_path.target }}"
+    hidden: true
+    file_type: any
+  register: data_path_contents
+  when: data_path_mounted.rc != 0
+
+- name: Refuse to hide existing data beneath a new bind mount
+  ansible.builtin.assert:
+    that:
+      - data_path_contents.matched == 0
+    fail_msg: "{{ data_path.target }} contains data on the boot disk. Stop services and migrate it explicitly before configuring the bind mount."
+  when: data_path_mounted.rc != 0
+
+- name: Persist the bind mount with an explicit parent mount dependency
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: "^[^#]+[ \\t]+{{ data_path.target }}[ \\t]+"
+    line: "{{ postbox_data_mount }}/{{ data_path.name }} {{ data_path.target }} none bind,x-systemd.requires-mounts-for={{ postbox_data_mount }} 0 0"
+    backup: true
+
+- name: Mount persistent data at its normal service path
+  ansible.builtin.command:
+    argv: [mount, "{{ data_path.target }}"]
+  when: data_path_mounted.rc != 0
+
+- name: Compare persistent source and target directory identities
+  ansible.builtin.command:
+    argv: [stat, -c, '%d:%i', "{{ item }}"]
+  loop:
+    - "{{ postbox_data_mount }}/{{ data_path.name }}"
+    - "{{ data_path.target }}"
+  register: data_path_identity
+  changed_when: false
+
+- name: Verify the bind mount points at the intended persistent directory
+  ansible.builtin.assert:
+    that:
+      - data_path_identity.results[0].stdout == data_path_identity.results[1].stdout
+    fail_msg: "The existing mount at {{ data_path.target }} does not match the configured data directory."

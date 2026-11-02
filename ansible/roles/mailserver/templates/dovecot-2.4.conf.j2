@@ -1,0 +1,139 @@
+# Full Dovecot CE 2.4 configuration. Deliberately does not include conf.d,
+# whose packaged defaults and legacy settings use the 2.3 configuration model.
+dovecot_config_version = 2.4.0
+# Preserve the on-disk Maildir/index compatibility floor for a possible 2.3 reader.
+dovecot_storage_version = 2.3.0
+
+protocols = imap lmtp
+listen = *, ::
+
+mail_driver = maildir
+mail_home = /var/vmail/%{user | domain}/%{user | username}
+mail_path = %{home}/Maildir
+mail_uid = 2000
+mail_gid = 2000
+
+ssl = yes
+auth_allow_cleartext = no
+auth_mechanisms = plain login
+ssl_min_protocol = TLSv1.2
+ssl_server_cert_file = /etc/letsencrypt/live/{{ main_hostname }}/fullchain.pem
+ssl_server_key_file = /etc/letsencrypt/live/{{ main_hostname }}/privkey.pem
+
+sql_driver = mysql
+mysql 127.0.0.1 {
+  dbname = postfix
+  user = postfix
+  password = {{ mariadb_postfix_password }}
+}
+
+passdb sql {
+  query = SELECT username AS user, password FROM mailbox WHERE username = '%{user}' AND active = '1'
+  default_password_scheme = SHA512
+}
+
+userdb sql {
+  query = SELECT 2000 AS uid, 2000 AS gid FROM mailbox WHERE username = '%{user}' AND active = '1'
+  iterate_query = SELECT username AS user FROM mailbox WHERE active = '1'
+}
+
+namespace inbox {
+  namespace_inbox = yes
+  namespace_separator = /
+
+  mailbox Drafts {
+    auto = create
+    special_use = \Drafts
+  }
+  mailbox Junk {
+    auto = create
+    special_use = \Junk
+    sieve_script report_spam {
+      type = before
+      cause = copy flag
+      path = /etc/dovecot/sieve/report-spam.sieve
+    }
+  }
+  mailbox Trash {
+    auto = create
+    special_use = \Trash
+  }
+  mailbox Sent {
+    auto = create
+    special_use = \Sent
+  }
+  mailbox "Sent Messages" {
+    special_use = \Sent
+  }
+}
+
+sieve_script after_spam_to_junk {
+  type = after
+  path = /etc/dovecot/sieve/move-spam-to-junk.sieve
+}
+imapsieve_from Junk {
+  sieve_script report_ham {
+    type = before
+    cause = copy
+    path = /etc/dovecot/sieve/report-ham.sieve
+  }
+}
+
+sieve_plugins {
+  sieve_imapsieve = yes
+  sieve_extprograms = yes
+}
+sieve_global_extensions {
+  vnd.dovecot.pipe = yes
+}
+sieve_pipe_bin_dir = /etc/dovecot/sieve
+
+protocol imap {
+  mail_plugins {
+    imap_sieve = yes
+  }
+}
+protocol lmtp {
+  mail_plugins {
+    sieve = yes
+  }
+}
+
+service imap-login {
+  inet_listener imap {
+    port = 143
+  }
+  inet_listener imaps {
+    port = 993
+    ssl = yes
+  }
+}
+service lmtp {
+  unix_listener /var/spool/postfix/private/dovecot-lmtp {
+    mode = 0600
+    user = postfix
+    group = postfix
+  }
+}
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0666
+  }
+}
+service stats {
+  unix_listener stats-reader {
+    user = www-data
+    mode = 0660
+  }
+  unix_listener stats-writer {
+    user = www-data
+    mode = 0660
+  }
+}
+
+{% for item in domainlist %}
+local_name {{ item.mail_domain }} {
+  ssl_server_cert_file = /etc/letsencrypt/live/{{ item.mail_domain }}/fullchain.pem
+  ssl_server_key_file = /etc/letsencrypt/live/{{ item.mail_domain }}/privkey.pem
+}
+{% endfor %}
