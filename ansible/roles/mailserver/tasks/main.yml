@@ -515,21 +515,36 @@
     executable: /bin/bash
   no_log: yes
 
-- name: Remove roundcube directory
-  become: yes
-  file:
+- name: Check installed Roundcube version
+  become: true
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -Fq
+      - "define('RCMAIL_VERSION', '{{ roundcube_version }}')"
+      - /opt/roundcube/program/include/iniset.php
+  register: roundcube_installed_version
+  changed_when: false
+  failed_when: false
+
+- name: Remove Roundcube directory when the pinned version changes
+  become: true
+  ansible.builtin.file:
     path: /opt/roundcube
     state: absent
+  when: roundcube_installed_version.rc != 0
 
 - name: Download Roundcube
   unarchive:
     src: https://github.com/roundcube/roundcubemail/releases/download/{{ roundcube_version }}/roundcubemail-{{ roundcube_version }}-complete.tar.gz
     dest: /opt
     remote_src: yes
+  when: roundcube_installed_version.rc != 0
 
 - name: Change roundcube directory name
   become: yes
   shell: mv /opt/roundcubemail-{{ roundcube_version }} /opt/roundcube
+  when: roundcube_installed_version.rc != 0
 
 - name: Create a roundcube symlink in html 
   become: yes
@@ -540,9 +555,20 @@
 
 - name: www-data user own temps, logs and schema
   become: yes
-  shell: |
-    chown -R www-data:www-data /opt/roundcube/temp/ /opt/roundcube/logs/
-    "{{ mariadb_client_path }}" roundcube < /opt/roundcube/SQL/mysql.initial.sql --force
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    recurse: true
+  loop:
+    - /opt/roundcube/temp
+    - /opt/roundcube/logs
+
+- name: Initialize Roundcube schema on first install
+  become: true
+  ansible.builtin.shell: "{{ mariadb_client_path }} roundcube < /opt/roundcube/SQL/mysql.initial.sql --force"
+  when: roundcube_installed_version.rc != 0
 
 - name: Add roundcube config
   become: yes
@@ -586,21 +612,36 @@
   with_items: 
     - "{{ domainlist }}"
 
-- name: Remove postfixadmin directory
-  become: yes
-  file:
+- name: Check installed PostfixAdmin version
+  become: true
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -Fq
+      - "Version {{ postfixadmin_version }} "
+      - /opt/postfixadmin/CHANGELOG.TXT
+  register: postfixadmin_installed_version
+  changed_when: false
+  failed_when: false
+
+- name: Remove PostfixAdmin directory when the pinned version changes
+  become: true
+  ansible.builtin.file:
     path: /opt/postfixadmin
     state: absent
+  when: postfixadmin_installed_version.rc != 0
 
-- name: Download Postfix Admin
+- name: Download PostfixAdmin when the pinned version changes
   unarchive:
     src: https://github.com/postfixadmin/postfixadmin/archive/postfixadmin-{{ postfixadmin_version }}.tar.gz
     dest: /opt
     remote_src: yes
+  when: postfixadmin_installed_version.rc != 0
 
-- name: Change postfix directory name
+- name: Rename PostfixAdmin release directory
   become: yes
   shell: mv /opt/postfixadmin-postfixadmin-{{ postfixadmin_version }} /opt/postfixadmin
+  when: postfixadmin_installed_version.rc != 0
 
 - name: Create a postfixadmin symlink in html 
   become: yes
